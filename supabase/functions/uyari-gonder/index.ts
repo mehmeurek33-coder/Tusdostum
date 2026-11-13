@@ -74,10 +74,11 @@ export async function pushGonder(abone, metin, vapid, fetchFn = fetch) {
   return { durum: r.status, oldu: r.status >= 200 && r.status < 300, olu: r.status === 404 || r.status === 410 };
 }
 
-const METIN = {
-  mola: (dk) => ({ baslik: "Mola uzadı", govde: `Molan ${dk} dakikayı geçti.` }),
-  calisma: (dk) => ({ baslik: "Mola zamanı", govde: `Aralıksız çalışman ${dk} dakikayı geçti.` }),
-  sinir: () => ({ baslik: "3 saat doldu", govde: "3 saattir aralıksız çalışıyorsun. Devam ediyor musun?" }),
+// Tekrarlarda geçen süre büyür: dk + sira × 3
+export const METIN = {
+  mola: (dk, sira = 0) => ({ baslik: "⏰ Mola bitti!", govde: `Molan ${dk + sira * 3} dakikayı geçti. Çalışmaya dön.` }),
+  calisma: (dk, sira = 0) => ({ baslik: "☕ Mola zamanı", govde: `${dk + sira * 3} dakikadır aralıksız çalışıyorsun.` }),
+  sinir: () => ({ baslik: "⚠️ 3 saat doldu", govde: "3 saattir aralıksız çalışıyorsun. Devam ediyor musun?" }),
 };
 
 // Vakti gelen uyarıları al, gönder, ölü abonelikleri temizle
@@ -95,9 +96,11 @@ export async function calistir(env, fetchFn = fetch) {
   const sonuc = { gonderilen: 0, basarisiz: 0, silinen: 0 };
   const olu = [];
   await Promise.all((satirlar || []).map(async (s) => {
-    const m = (METIN[s.tur] || METIN.mola)(s.dk);
+    const sira = Number(s.sira) || 0;
+    const m = (METIN[s.tur] || METIN.mola)(s.dk, sira);
     try {
-      const g = await pushGonder(s, JSON.stringify({ baslik: m.baslik, govde: m.govde, etiket: "td-" + s.tur, url: "./" }), env.vapid, fetchFn);
+      // her tekrar ayrı etiketle gider: telefon bir öncekinin üstüne sessizce yazmaz, her seferinde ses çıkarır
+      const g = await pushGonder(s, JSON.stringify({ baslik: m.baslik, govde: m.govde, etiket: `td-${s.tur}-${sira}`, url: "./" }), env.vapid, fetchFn);
       if (g.oldu) sonuc.gonderilen++; else { sonuc.basarisiz++; if (g.olu) olu.push(s.endpoint); }
     } catch (_e) { sonuc.basarisiz++; }
   }));

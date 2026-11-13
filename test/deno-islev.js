@@ -49,7 +49,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
       const p = gelen.find(x => x.url === '/push/1');
       let ileti = {};
       try { ileti = JSON.parse(ece.decrypt(p.govde, { version: 'aes128gcm', privateKey: alici, authSecret: auth }).toString('utf8')); } catch (e) { ileti = { hata: e.message }; }
-      ok('Deno\'nun şifrelediği ileti telefonda çözülebiliyor', ileti.govde === 'Aralıksız çalışman 45 dakikayı geçti.' && ileti.etiket === 'td-calisma', JSON.stringify(ileti));
+      ok('Deno\'nun şifrelediği ileti telefonda çözülebiliyor', ileti.govde === '45 dakikadır aralıksız çalışıyorsun.' && ileti.etiket === 'td-calisma-0', JSON.stringify(ileti));
       const m = /^vapid t=([\w-]+)\.([\w-]+)\.([\w-]+), k=/.exec((p && p.basliklar.authorization) || '');
       ok('Deno\'nun attığı VAPID imzası doğrulanıyor', !!m && crypto.verify('sha256', Buffer.from(`${m[1]}.${m[2]}`), { key: k.publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(m[3], 'base64url')));
     }

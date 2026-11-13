@@ -71,6 +71,9 @@ create table if not exists public.uyarilar (
   dk int not null default 0,
   primary key (uid, tur)
 );
+-- Tekrar: kişi çalışmaya dönene kadar uyarı TEKRAR_ARALIK arayla "kalan" kez daha gönderilir; "sira" kaçıncı olduğudur
+alter table public.uyarilar add column if not exists kalan int not null default 0;
+alter table public.uyarilar add column if not exists sira int not null default 0;
 create index if not exists uyarilar_zaman on public.uyarilar (zaman);
 create table if not exists public.yoneticiler (
   uid uuid primary key references auth.users(id) on delete cascade
@@ -259,21 +262,30 @@ begin
     if (x ->> 'tur') not in ('mola', 'calisma', 'sinir') then continue; end if;
     z := to_timestamp((x ->> 'zaman')::double precision / 1000.0);
     if z < now() - interval '1 minute' or z > now() + interval '13 hours' then continue; end if;
-    insert into uyarilar (uid, tur, zaman, dk) values (me, x ->> 'tur', z, least(greatest(coalesce((x ->> 'dk')::int, 0), 0), 600))
-      on conflict (uid, tur) do update set zaman = excluded.zaman, dk = excluded.dk;
+    insert into uyarilar (uid, tur, zaman, dk, kalan, sira)
+      values (me, x ->> 'tur', z, least(greatest(coalesce((x ->> 'dk')::int, 0), 0), 600),
+              case when (x ->> 'tur') = 'sinir' then 0 else least(greatest(coalesce((x ->> 'tekrar')::int, 0), 0), 5) end, 0)
+      on conflict (uid, tur) do update set zaman = excluded.zaman, dk = excluded.dk, kalan = excluded.kalan, sira = 0;
   end loop;
 end $$;
 
 -- Vakti gelen uyarıları alır ve siler; yalnızca bildirim gönderen işlev (service_role) çağırır
-create or replace function public.td_vadesi_gelenler() returns table (uid uuid, tur text, dk int, endpoint text, p256dh text, auth text)
-language sql security definer set search_path = public as $$
-  with d as (
-    delete from uyarilar u where u.zaman <= now() + interval '20 seconds'
-    returning u.uid, u.tur, u.dk, u.zaman)
-  select d.uid, d.tur, d.dk, a.endpoint, a.p256dh, a.auth
-  from d join push_abonelikleri a on a.uid = d.uid
-  where d.zaman > now() - interval '15 minutes'
-$$;
+-- Tekrar hakkı kalan uyarı 3 dakika sonrasına yeniden kurulur (kişi çalışmaya dönünce uygulama listeyi siler).
+drop function if exists public.td_vadesi_gelenler();
+create function public.td_vadesi_gelenler() returns table (uid uuid, tur text, dk int, sira int, endpoint text, p256dh text, auth text)
+language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in delete from uyarilar u where u.zaman <= now() + interval '20 seconds'
+           returning u.uid, u.tur, u.dk, u.zaman, u.kalan, u.sira loop
+    if r.zaman <= now() - interval '15 minutes' then continue; end if;
+    if r.kalan > 0 then
+      insert into uyarilar (uid, tur, zaman, dk, kalan, sira) values (r.uid, r.tur, now() + interval '3 minutes', r.dk, r.kalan - 1, r.sira + 1)
+        on conflict on constraint uyarilar_pkey do nothing;
+    end if;
+    return query select r.uid, r.tur, r.dk, r.sira, a.endpoint, a.p256dh, a.auth from push_abonelikleri a where a.uid = r.uid;
+  end loop;
+end $$;
 create or replace function public.td_olu_abonelikleri_sil(p_endpointler text[]) returns void
 language sql security definer set search_path = public as $$
   delete from push_abonelikleri where endpoint = any (p_endpointler)

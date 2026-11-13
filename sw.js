@@ -1,5 +1,5 @@
 // TusDostum · servis çalışanı: çevrimdışı kabuk + bildirimler
-const SURUM = "td-1";
+const SURUM = "td-2";
 const KABUK = ["./", "index.html", "config.js", "altyapi.js", "vendor/supabase.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
@@ -49,9 +49,11 @@ self.addEventListener("push", e => {
     body: d.govde || "",
     tag: d.etiket || "tusdostum",
     renotify: true,
+    requireInteraction: true,                                       // dokunulana kadar ekranda kalsın (destekleyen telefonlarda)
+    silent: false,
     icon: "icons/icon-192.png",
     badge: "icons/badge-96.png",
-    vibrate: [250, 120, 250],
+    vibrate: [400, 150, 400, 150, 400],
     data: { url: d.url || "./" },
   }));
 });

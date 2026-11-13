@@ -97,6 +97,22 @@ reset request.jwt.claim.sub; set role service_role;
 select tdt.yaz('Kuyruk yalnızca vakti gelen uyarıyı, cihaz bilgisiyle verir',
   (select count(*) = 1 and min(tur) = 'mola' and min(dk) = 10 and min(endpoint) = 'https://push.example/abc' from td_vadesi_gelenler()));
 select tdt.yaz('Verilen uyarı kuyruktan silinir, gelecekteki kalır', (select count(*) = 1 and min(tur) = 'sinir' from uyarilar));
+-- Tekrar: mola uyarısı 2 tekrarla kurulur; her gönderimden sonra 3 dk sonrasına yeniden kurulur, sonra biter
+set role authenticated; set request.jwt.claim.sub = :A;
+select td_uyarilari_ayarla(jsonb_build_array(
+  jsonb_build_object('tur', 'mola', 'zaman', (extract(epoch from now()) * 1000)::bigint + 5000, 'dk', 5, 'tekrar', 2),
+  jsonb_build_object('tur', 'sinir', 'zaman', (extract(epoch from now()) * 1000)::bigint + 5000, 'dk', 180, 'tekrar', 4))) is null;
+select tdt.yaz('Tekrar hakkı kaydedilir; 3 saat sınırı tekrarlanmaz', (select kalan from uyarilar where uid = :A and tur = 'mola') = 2 and (select kalan from uyarilar where uid = :A and tur = 'sinir') = 0);
+reset request.jwt.claim.sub; set role service_role;
+create temp table t1 as select * from td_vadesi_gelenler();
+select tdt.yaz('İlk gönderim: sıra 0', (select count(*) = 2 and max(sira) = 0 from t1));
+select tdt.yaz('Mola uyarısı 3 dk sonrasına yeniden kuruldu (sıra 1, kalan 1); sınır kurulmadı',
+  (select count(*) = 1 and min(tur) = 'mola' and min(sira) = 1 and min(kalan) = 1 and min(zaman) between now() + interval '170 seconds' and now() + interval '190 seconds' from uyarilar));
+update uyarilar set zaman = now();
+create temp table t2 as select * from td_vadesi_gelenler();
+update uyarilar set zaman = now();
+create temp table t3 as select * from td_vadesi_gelenler();
+select tdt.yaz('Toplam 3 bildirim (sıra 0, 1, 2), sonra kuyruk boş', (select count(*) = 1 and min(sira) = 1 from t2) and (select count(*) = 1 and min(sira) = 2 from t3) and (select count(*) from uyarilar) = 0);
 set role authenticated; set request.jwt.claim.sub = :A;
 select td_uyarilari_ayarla('[]'::jsonb) is null;
 select tdt.yaz('Boş liste bekleyen uyarıları siler', (select count(*) from uyarilar where uid = :A) = 0);

@@ -451,7 +451,7 @@
     sonListe: "",
     async ayarla(liste) {
       if (!sb || !uid) return;
-      const temiz = (liste || []).map(x => ({ tur: x.tur, zaman: Math.round(x.zaman), dk: Math.round(x.dk) || 0 }));
+      const temiz = (liste || []).map(x => ({ tur: x.tur, zaman: Math.round(x.zaman), dk: Math.round(x.dk) || 0, tekrar: Math.round(x.tekrar) || 0 }));
       const iz = JSON.stringify(temiz);
       if (iz === this.sonListe) return;
       this.sonListe = iz;

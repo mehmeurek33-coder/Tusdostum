@@ -79,7 +79,8 @@ const b64u = b => Buffer.from(b).toString('base64url');
     await S.sql(`update push_abonelikleri set endpoint = $2 where uid = $1`, [uid, S.adres + '/push/telefon-1']);
     s1 = await cagir();
     ok('Vakti gelince işlev bildirimi yolluyor', s1.gonderilen === 1 && S.pushlar.length === 1, JSON.stringify(s1));
-    ok('Gönderilen uyarı kuyruktan silindi (ikinci kez gitmez)', (await S.sql('select 1 from uyarilar where uid = $1', [uid])).length === 0 && (await cagir()).gonderilen === 0);
+    const tekrar = await S.sql(`select sira, kalan, round(extract(epoch from zaman - now()))::int as sn from uyarilar where uid = $1`, [uid]);
+    ok('Gönderilen uyarı 3 dk sonrası için tekrar kuruldu, hemen ikinci kez gitmiyor', tekrar.length === 1 && tekrar[0].sira === 1 && tekrar[0].kalan === 1 && tekrar[0].sn > 160 && tekrar[0].sn <= 181 && (await cagir()).gonderilen === 0, JSON.stringify(tekrar));
     let ileti = null;
     try { ileti = ece.decrypt(S.pushlar[0].govde, { version: 'aes128gcm', privateKey: alici, authSecret: auth }).toString('utf8'); } catch (e) { ileti = 'HATA ' + e.message; }
     ok('Telefon iletiyi kendi anahtarıyla çözebiliyor', /Molan 5 dakikayı geçti/.test(ileti), ileti);
@@ -96,7 +97,12 @@ const b64u = b => Buffer.from(b).toString('base64url');
       await cdp.send('ServiceWorker.deliverPushMessage', { origin: S.adres, registrationId: kayitNo, data: ileti });
       for (let i = 0; i < 20 && !bildirimler.length; i++) { await bekle(200); bildirimler = await p.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).map(n => ({ baslik: n.title, govde: n.body, etiket: n.tag }))); }
     }
-    ok('Ekranda bildirim: "Mola uzadı — Molan 5 dakikayı geçti."', bildirimler.length === 1 && bildirimler[0].baslik === 'Mola uzadı' && bildirimler[0].govde === 'Molan 5 dakikayı geçti.' && bildirimler[0].etiket === 'td-mola', JSON.stringify({ kayitNo, bildirimler }));
+    ok('Ekranda bildirim: "⏰ Mola bitti! — Molan 5 dakikayı geçti. Çalışmaya dön."', bildirimler.length === 1 && bildirimler[0].baslik === '⏰ Mola bitti!' && bildirimler[0].govde === 'Molan 5 dakikayı geçti. Çalışmaya dön.' && bildirimler[0].etiket === 'td-mola-0', JSON.stringify({ kayitNo, bildirimler }));
+
+    // ---- Çalışmaya dönünce kalan tekrarlar iptal ----
+    await p.click('[data-act="resume"]'); await bekle(900);
+    const kalanTur = (await S.sql('select tur from uyarilar where uid = $1 order by tur', [uid])).map(r => r.tur);
+    ok('Çalışmaya dönünce mola tekrarları iptal oluyor', !kalanTur.includes('mola'), JSON.stringify(kalanTur));
 
     // ---- Çevrimdışı: uygulama kabuğu önbellekten açılıyor ----
     await p.reload(); await bekle(1500);                             // servis çalışanı sayfayı devraldıktan sonraki yükleme önbelleği doldurur
