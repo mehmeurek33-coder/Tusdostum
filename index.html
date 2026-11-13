@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="8db779fe18ef">
+<meta name="td-surum" content="8b6f5fc27893">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -254,12 +254,9 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 
 /* Salon */
 .salon-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; max-width: 760px; margin: 0 auto; }
-/* Odalar arası kaydırınca küçük bir kayma */
-@keyframes slL { from { transform: translateX(28px); opacity: .35; } to { transform: none; opacity: 1; } }
-@keyframes slR { from { transform: translateX(-28px); opacity: .35; } to { transform: none; opacity: 1; } }
-#onlinePanel.sl-l > :not(.rtabs-wrap) { animation: slL .2s ease-out; }
-#onlinePanel.sl-r > :not(.rtabs-wrap) { animation: slR .2s ease-out; }
-@media (prefers-reduced-motion: reduce) { #onlinePanel.sl-l > *, #onlinePanel.sl-r > * { animation: none; } }
+/* Oda kutusu: içerik parmakla kayar (kutu sabit kalır) */
+#onlinePanel { overflow: hidden; overflow: clip; }
+#onlinePanel .rbody { will-change: transform; }
 .av { width: 34px; height: 34px; border-radius: 50%; flex: none; object-fit: cover; background: var(--surface-2); display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; }
 .av { font-size: 19px; line-height: 1; }
 .av.sm { width: 26px; height: 26px; font-size: 14px; }
@@ -1938,13 +1935,14 @@ function renderStrip() {
   if (t) setHTML($("focusSubj"), `${badge(t.s, "lg")}<span>${esc(SUBJ[t.s].n)} <span class="ty">· ${esc(TSHORT[t.t])}</span></span>`);
   const show = !!t && S.tab !== "bugun";
   document.body.classList.toggle("has-strip", show);
-  if (!show) { if (!el.hidden) { el.hidden = true; el.__h = null; el.innerHTML = ""; } return; }
+  if (!show) { if (!el.hidden) { el.hidden = true; el.__h = null; el.innerHTML = ""; } fitSalon(); return; }
   const brk = onBreak(t);
   setHTML(el, `<button class="go" type="button" data-strip="go" aria-label="Kronometreye git">${badge(t.s)}
       <span style="min-width:0"><span class="nm">${esc(SUBJ[t.s].n)} · ${brk ? "Molada" : esc(TSHORT[t.t])}</span><span class="tm${brk ? " brk" : ""}" id="stripTime">00:00:00</span></span></button>
     <button class="btn" type="button" data-strip="${brk ? "resume" : "pause"}"${readOnly() ? " disabled" : ""}>${brk ? "Çalışmaya dön" : "Mola ver"}</button>`);
   el.hidden = false;
   tickTimer();
+  fitSalon();
 }
 $("timerStrip").addEventListener("click", e => {
   const b = e.target.closest("[data-strip]"); if (!b) return;
@@ -1961,7 +1959,7 @@ setInterval(() => {
   const min = Math.floor(timerWork(S.timer) / 60000);
   if (min !== S.lastTickMin) { S.lastTickMin = min; if (S.tab === "bugun") renderToday(); }
 }, 250);
-setInterval(() => { if (S.tab === "salon") renderSalon(); if (S.profileId) renderProfile(); }, 5000);
+setInterval(() => { if (S.tab === "salon" && !S.suruklen) renderSalon(); if (S.profileId) renderProfile(); }, 5000);
 
 // ---------- Bugün ----------
 function renderToday() {
@@ -2177,8 +2175,9 @@ function renderSalon() {
   const canAdd = S.mode === "cloud" && !readOnly();
   const switcher = rooms.length || canAdd ? `<div class="rtabs-wrap"><div class="rtabs" role="group" aria-label="Odalar">${tab(GENEL, "Genel")}${rooms.map(l => tab(roomCode(l), l)).join("")}</div>
     ${canAdd ? `<button class="radd" type="button" data-room-plus aria-label="Oda kur ya da odaya katıl">${ICON_PLUS}</button>` : ""}</div>` : "";
-  const changed = setHTML($("onlinePanel"), `${switcher}<div class="panel-head"><h2>${rc === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</h2><span class="small muted num">${ppl.length} kişi · ${studying} çalışıyor</span></div>${online}
-    ${S.mode === "cloud" && !readOnly() ? `<div class="tc-actions" style="justify-content:flex-start"><button class="btn sm" type="button" data-invite>Arkadaş davet et</button></div>` : ""}`);
+  const changed = setHTML($("onlinePanel"), `${switcher}<div class="rbody"><div class="panel-head"><h2>${rc === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</h2><span class="small muted num">${ppl.length} kişi · ${studying} çalışıyor</span></div>${online}
+    ${S.mode === "cloud" && !readOnly() ? `<div class="tc-actions" style="justify-content:flex-start"><button class="btn sm" type="button" data-invite>Arkadaş davet et</button></div>` : ""}</div>`);
+  fitSalon();
   if (changed && S.lastRoomTab !== rc) {                               // seçili oda sekmesi görünür olsun (çok oda varsa)
     S.lastRoomTab = rc;
     const a = $("onlinePanel").querySelector('.rtabs [aria-pressed="true"]'), bar = a && a.parentElement;
@@ -2186,27 +2185,91 @@ function renderSalon() {
   }
 
 }
-// Salonda sağa/sola kaydırarak odalar arası geçiş (sola: sonraki oda, sağa: önceki)
+// Telefonda oda kutusu ekranın altına kadar uzanır; altında (kronometre şeridinin üstünde) sabit bir boşluk kalır
+const SALON_BOSLUK = 64;
+function fitSalon() {
+  const pnl = $("onlinePanel"); if (!pnl) return;
+  if (!isPhone() || S.tab !== "salon") { pnl.style.minHeight = ""; return; }
+  const top = pnl.getBoundingClientRect().top + window.scrollY;
+  const nav = document.querySelector("nav.tabs"), strip = $("timerStrip");
+  const alt = (nav ? nav.getBoundingClientRect().height : 0) + (strip && !strip.hidden ? strip.getBoundingClientRect().height + 6 : 0);
+  pnl.style.minHeight = Math.max(220, Math.floor(window.innerHeight - top - alt - SALON_BOSLUK)) + "px";
+}
+window.addEventListener("resize", () => { if (S.tab === "salon") fitSalon(); });
+
+// Kaydırarak geçiş: oda kutusunun içinde odalar, dışında (ve kronometre şeridinde) alttaki sekmeler.
+// İçerik parmağı izler; bırakınca ya yerine oturur ya da sonraki sayfa yandan kayarak gelir.
 (() => {
   let d = null;
-  const sec = $("panel-salon");
-  sec.addEventListener("touchstart", e => {
+  const KAPALI = "input, textarea, select, .rtabs, .tbl-wrap, .chart-box, nav.tabs";
+  const bolge = el => {
+    if (document.documentElement.classList.contains("lock") || el.closest(KAPALI)) return null;
+    if (S.tab === "salon" && el.closest("#onlinePanel")) return "oda";
+    if (el.closest("main, #timerStrip")) return "sekme";
+    return null;
+  };
+  const komsu = (tur, yon) => {                                     // yon: +1 sonraki (sola kaydırma), -1 önceki
+    if (tur === "oda") { const k = [GENEL, ...myRoomKeys()], j = k.indexOf(myRoomCode()) + yon; return j >= 0 && j < k.length ? k[j] : null; }
+    const j = TABS.indexOf(S.tab) + yon; return j >= 0 && j < TABS.length ? TABS[j] : null;
+  };
+  const hedefEl = tur => tur === "oda" ? $("onlinePanel").querySelector(".rbody") : $("panel-" + S.tab);
+  const temizle = el => { if (el) { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; } };
+  const azHareket = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
+  document.addEventListener("touchstart", e => {
     d = null;
-    if (e.touches.length !== 1 || e.target.closest(".rtabs, input, textarea, select")) return;
-    const t = e.touches[0]; if (t.clientX < 20 || t.clientX > innerWidth - 20) return;      // kenar hareketlerine karışma
-    d = { x: t.clientX, y: t.clientY, t: Date.now() };
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0]; if (t.clientX < 18 || t.clientX > innerWidth - 18) return;   // kenar hareketleri telefonundur
+    const tur = bolge(e.target); if (!tur) return;
+    d = { tur, x: t.clientX, y: t.clientY, t: Date.now(), yatay: null, el: null, dx: 0 };
   }, { passive: true });
-  sec.addEventListener("touchend", e => {
+  document.addEventListener("touchmove", e => {
     if (!d) return;
-    const t = e.changedTouches[0], dx = t.clientX - d.x, dy = t.clientY - d.y, dt = Date.now() - d.t; d = null;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || dt > 900) return;
-    const keys = [GENEL, ...myRoomKeys()], j = keys.indexOf(myRoomCode()) + (dx < 0 ? 1 : -1);
-    if (j < 0 || j >= keys.length) return;
-    setActiveRoom(keys[j]); render();
-    const pnl = $("onlinePanel");
-    pnl.classList.remove("sl-l", "sl-r"); void pnl.offsetWidth; pnl.classList.add(dx < 0 ? "sl-l" : "sl-r");
-    clearTimeout(pnl.__slT); pnl.__slT = setTimeout(() => pnl.classList.remove("sl-l", "sl-r"), 260);
-  }, { passive: true });
+    const t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+    if (d.yatay === null) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      d.yatay = Math.abs(dx) > Math.abs(dy) * 1.3;
+      if (!d.yatay) { d = null; return; }                            // dikey: sayfa normal kayar
+      d.el = hedefEl(d.tur); if (!d.el) { d = null; return; }
+      S.suruklen = true;
+      d.el.style.transition = "none";
+    }
+    e.preventDefault();
+    const var_ = komsu(d.tur, dx < 0 ? 1 : -1);
+    d.dx = var_ ? dx : dx * 0.3;                                     // gidecek yer yoksa esner
+    d.el.style.transform = `translateX(${d.dx}px)`;
+    d.el.style.opacity = String(1 - Math.min(0.35, Math.abs(d.dx) / innerWidth * 0.5));
+  }, { passive: false });
+  const bitir = () => {
+    if (!d || !d.el) { d = null; S.suruklen = false; return; }
+    const { tur, el, dx, t } = d; d = null;
+    const w = el.getBoundingClientRect().width || innerWidth, hiz = Math.abs(dx) / Math.max(1, Date.now() - t);
+    const yon = dx < 0 ? 1 : -1, hedef = komsu(tur, yon);
+    const sure = azHareket() ? 0 : 170;
+    if (!hedef || (Math.abs(dx) < w * 0.22 && !(Math.abs(dx) > 40 && hiz > 0.5))) {
+      el.style.transition = `transform ${sure + 50}ms ease-out, opacity ${sure + 50}ms`;
+      el.style.transform = ""; el.style.opacity = "";
+      setTimeout(() => { temizle(el); S.suruklen = false; }, sure + 80);
+      return;
+    }
+    el.style.transition = `transform ${sure}ms ease-in, opacity ${sure}ms`;
+    el.style.transform = `translateX(${-yon * w}px)`; el.style.opacity = "0.2";
+    setTimeout(() => {
+      temizle(el);
+      let yeni;
+      if (tur === "oda") { setActiveRoom(hedef); S.suruklen = false; render(); yeni = $("onlinePanel").querySelector(".rbody"); }
+      else { yeni = $("panel-" + hedef); S.suruklen = false; }
+      if (yeni) { yeni.style.transition = "none"; yeni.style.transform = `translateX(${yon * w * 0.45}px)`; yeni.style.opacity = "0.2"; }
+      if (tur === "sekme") go(hedef);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!yeni) return;
+        yeni.style.transition = `transform ${sure + 60}ms ease-out, opacity ${sure + 60}ms`;
+        yeni.style.transform = ""; yeni.style.opacity = "";
+        setTimeout(() => temizle(yeni), sure + 120);
+      }));
+    }, sure);
+  };
+  document.addEventListener("touchend", bitir, { passive: true });
+  document.addEventListener("touchcancel", bitir, { passive: true });
 })();
 
 // ---------- Dersler (B2, B4) ----------
