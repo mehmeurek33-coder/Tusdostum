@@ -93,7 +93,8 @@ function enablePush(after) {
   const A = window.TusAltyapi; if (!A || S.mode !== "cloud") return;
   A.bildirim.ac().then(ok => {
     if (ok) { stopBreakAudio(); toast("Bildirimler açık."); }
-    else toast(A.bildirim.izin() === "denied" ? "Bildirim izni verilmedi." : "Bildirimler açılamadı.");
+    else if (A.bildirim.izin() === "denied") toast("Bildirim izni verilmedi.");
+    else if (A.bildirim.izin() === "granted") toast("Bildirimler açılamadı.");          // izin penceresi kapatıldıysa sessiz kal
     syncAlerts(); renderTimerCard(); if (after) after();
   });
 }
@@ -113,7 +114,7 @@ function openAlerts() {
   const chips = (name, opts, cur) => `<div class="chips" role="radiogroup" data-chips="${name}">${opts.map(v =>
     `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}"${ro ? " disabled" : ""}>${v || "Kapalı"}</button>`).join("")}</div>`;
   const note = () => {
-    if (!A || S.mode !== "cloud" || (!breakWarnMin() && !workWarnMin())) return "";
+    if (!A || S.mode !== "cloud") return "";
     const d = pushState();
     if (d === "acik") return `<span class="hint">Bildirimler açık.</span>`;
     if (d === "sor") return `<button class="btn primary" type="button" id="alPush">Bildirimleri aç</button>`;
@@ -128,6 +129,7 @@ function openAlerts() {
   openModal(formShell("alForm", "alTitle", "Uyarılar", body, `<button class="btn primary" type="button" data-close-modal>Tamam</button>`));
   const f = $("alForm");
   const redraw = () => { const n = $("alNote"); if (n) n.innerHTML = note(); };
+  S.alRedraw = redraw;
   f.addEventListener("submit", e => e.preventDefault());
   f.addEventListener("click", e => {
     if (e.target.closest("[data-close-modal]")) { closeModal(); return; }
@@ -204,7 +206,7 @@ degis('    ${longBreak ? `<div class="nudge">Molan ${breakWarnMin()} dakikayı g
 degis("if ((runOverflow(t, now) > 0) !== S.lastOverflow || breakOver(t, now) !== S.lastBreakOver) renderTimerCard();",
       "if ((runOverflow(t, now) > 0) !== S.lastOverflow || breakOver(t, now) !== S.lastBreakOver || (runOverflow(t, now) <= 0 && workOver(t, now)) !== S.lastWorkOver) renderTimerCard();", "tik")
 degis('  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }',
-      '  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }\n  else if (a === "alerts") openAlerts();\n  else if (a === "push-on") enablePush();', "zil tıklama")
+      '  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }\n  else if (a === \"alerts\") { if (pushState() === \"sor\") enablePush(() => S.alRedraw && S.alRedraw()); openAlerts(); }\n  else if (a === "push-on") enablePush();', "zil tıklama")
 degis("  if (breakOver(S.timer)) breakAlert();", "  if (breakOver(S.timer)) breakAlert();\n  if (workOver(S.timer)) workAlert();", "aralık")
 
 degis("Erişimi sürüyorsa uygulamayı açınca yeniden görünür.", "Listelerden çıkar ve yeniden katılamaz.", "çıkarma metni")

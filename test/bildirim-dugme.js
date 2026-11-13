@@ -50,6 +50,40 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
     ok('Mola uyarısı sunucuda bekliyor', (await S.sql(`select 1 from uyarilar where uid = $1 and tur = 'mola'`, [uid])).length === 1);
     await p.reload(); await bekle(2000);
     ok('Yeniden açılışta kayıt kendiliğinden sürüyor, düğme çıkmıyor', !(await p.$('[data-act="push-on"]')) && (await S.sql('select 1 from push_abonelikleri where uid = $1', [uid])).length === 1);
+    // İkinci kişi: zile İLK basışta izin penceresi çıkar ve izin verilince cihaz hemen kaydolur
+    const ctx2 = await b.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true });
+    await ctx2.addInitScript(() => {
+      const sahte = { endpoint: 'https://bildirim.ornek.invalid/push/2', getKey: ad => new Uint8Array(ad === 'p256dh' ? 65 : 16).fill(5).buffer, unsubscribe: async () => true };
+      if (window.PushManager) {
+        PushManager.prototype.subscribe = async function () { localStorage.setItem('sahte.abone', '1'); return sahte; };
+        PushManager.prototype.getSubscription = async function () { return localStorage.getItem('sahte.abone') ? sahte : null; };
+      }
+      window.__izinSoruldu = 0;
+      const gercek = Notification.requestPermission.bind(Notification);
+      Notification.requestPermission = async () => { window.__izinSoruldu++; return localStorage.getItem('izin.ver') ? gercek() : 'default'; };
+    });
+    const q = await ctx2.newPage(); q.on('pageerror', e => hatalar.push(e.message));
+    await q.goto(S.adres + '/');
+    await q.waitForSelector('#authView');
+    await q.click('#authView [data-mode="kayit"]'); await q.fill('#aMail', 'zil2@test.dev'); await q.fill('#aPass', 'gizli123'); await q.click('#aGo');
+    await q.waitForSelector('#joinForm', { timeout: 15000 }); await q.fill('#jNick', 'Zil2'); await q.click('#joinForm button[type=submit]'); await bekle(600);
+    const uid2 = S.hesaplar.get('zil2@test.dev').id;
+    // önce izin penceresi kapatılır (karar verilmez): sessiz kalır, pencere açılır, düğme orada
+    await q.click('#timerCard .bell'); await q.waitForSelector('#alForm'); await bekle(400);
+    ok('Zile ilk basışta izin soruluyor', await q.evaluate(() => window.__izinSoruldu === 1));
+    ok('İzin penceresi kapatılınca hata yazısı çıkmıyor, zil penceresi açık', (await q.$$('#alForm')).length === 1 && !(await q.isVisible('#toast')));
+    await q.click('#alForm [data-close-modal]');
+    // ikinci basışta izin verilir: cihaz hemen kaydolur, pencerede "Bildirimler açık."
+    await ctx2.grantPermissions(['notifications'], { origin: S.adres });
+    await q.evaluate(() => localStorage.setItem('izin.ver', '1'));
+    await q.click('#timerCard .bell'); await q.waitForSelector('#alForm'); await bekle(1200);
+    ok('İzin verilince ayrı düğmeye basmadan cihaz kaydoldu', (await S.sql('select 1 from push_abonelikleri where uid = $1', [uid2])).length === 1);
+    const notMetni = await q.evaluate(() => ({ not: document.querySelector('#alNote') && document.querySelector('#alNote').textContent.trim(), durum: window.TusAltyapi.bildirim.durum(), kayitli: window.TusAltyapi.bildirim.kayitli, izin: Notification.permission }));
+    ok('Zil penceresi kendiliğinden "Bildirimler açık." oldu', notMetni.not.includes('Bildirimler açık'), JSON.stringify(notMetni));
+    await q.click('#alForm [data-close-modal]');
+    const once = await q.evaluate(() => window.__izinSoruldu);
+    await q.click('#timerCard .bell'); await q.waitForSelector('#alForm'); await bekle(300);
+    ok('Bildirim açıkken zile basınca bir daha izin sorulmuyor', await q.evaluate(n => window.__izinSoruldu === n, once));
     ok('Sayfa hatası yok', hatalar.length === 0, hatalar.join(' | '));
   } catch (e) { ok('Test akışı tamamlandı', false, (e && e.stack) || String(e)); }
   console.log(out.join('\n'));
