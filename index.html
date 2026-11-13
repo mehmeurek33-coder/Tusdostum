@@ -1166,11 +1166,11 @@ function presentPeople() {
   for (const [k, lp] of live) if (!out.has(k) && !S.roots[k]) out.set(k, lp);       // henüz kaydı olmayan ama sayfası açık kişi
   return [...out.values()].sort((a, b) => (ST_RANK[b.pr.st] - ST_RANK[a.pr.st]) || (b.isMe - a.isMe));
 }
-function peerElapsed(p) {                                         // yalnızca yerel saat farkları kullanılır
+function peerElapsed(p, now = Date.now()) {                      // yalnızca yerel saat farkları kullanılır
   const st = p.pr && p.pr.st;
   if (st !== "calisiyor" && st !== "mola") return null;
   const base = clampNum(st === "mola" ? p.pr.brk : p.pr.work, 0, 30 * 864e5);
-  const delta = Math.max(0, Date.now() - (p.updatedAt || Date.now()));
+  const delta = Math.max(0, now - (p.updatedAt || now));
   const cap = st === "calisiyor" ? clampNum(p.pr.rem, 0, MAX_RUN_MS) : delta;
   return base + Math.min(delta, cap);
 }
@@ -1643,6 +1643,7 @@ function go(hash) { if (location.hash !== "#" + hash) location.hash = hash; else
 
 // ---------- Çizim iskeleti ----------
 function render() {
+  scheduleTick();
   renderHeader(); renderBanner();
   document.querySelectorAll("[data-tab-panel]").forEach(p => { p.hidden = p.dataset.tabPanel !== S.tab; });
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === S.tab)));
@@ -1749,14 +1750,37 @@ function shownTimes(t, now) {
   const brk = t.breakStart ? Math.floor(Math.max(0, now - t.breakStart) / 1000) * 1000 : 0;
   return { work, brk, sb: sinceBreak(t, now) === null ? null : run };
 }
-// Saniye sınırına hizalı tik: her saniye eşit sürede ilerler (250 ms'lik genel döngüden bağımsız)
+// Saniye sınırına hizalı tik: her saniye eşit sürede ilerler (250 ms'lik genel döngüden bağımsız).
+// Ortak saniye sınırı: kendi kronometren varsa onun başlangıcı, yoksa saatin tam saniyesi. Salondaki herkes buna göre ilerler.
+const phaseAnchor = () => { const t = S.timer; return (t && (t.breakStart || t.runStart)) || 0; };
+function alignedNow(now = Date.now()) { const a = phaseAnchor(); return a + Math.floor((now - a) / 1000) * 1000; }
+// Salonda gösterilen canlı süre (yalnızca hizalı saniyede değişir; kendi satırın kronometrenle birebir aynıdır)
+function liveShown(p) {
+  const st = p.pr && p.pr.st;
+  if (st !== "calisiyor" && st !== "mola") return null;
+  if (p.isMe && S.timer) { const sh = shownTimes(S.timer, Date.now()); return onBreak(S.timer) ? sh.brk : sh.work; }
+  const an = alignedNow(), fl = v => Math.floor(Math.max(0, v) / 1000) * 1000;
+  if (p.pr.uid == null) {                                           // canlı bağlantı yok: kayıtlı kronometreden hesapla
+    const t = normTimer((S.roots[p.key] || {}).timer);
+    if (t) return fl(onBreak(t) ? curBreak(t, an) : timerWork(t, an));
+  }
+  const v = peerElapsed(p, an);
+  return v === null ? null : fl(v);
+}
+function tickSalon() {
+  if (S.tab !== "salon") return;
+  const els = document.querySelectorAll("#onlinePanel [data-live]");
+  if (!els.length) return;
+  const ppl = presentPeople();
+  els.forEach(el => { const p = ppl.find(x => x.key === el.dataset.live); const v = p ? liveShown(p) : null; if (v !== null) { const tx = fmtClock(v); if (el.textContent !== tx) el.textContent = tx; } });
+}
 let alignT = null;
 function scheduleTick() {
   clearTimeout(alignT); alignT = null;
-  const t = S.timer, anchor = t && (t.breakStart || t.runStart);
-  if (!anchor || document.hidden) return;
+  if (document.hidden || (!S.timer && S.tab !== "salon")) return;
+  const anchor = phaseAnchor();
   const wait = 1000 - ((Date.now() - anchor) % 1000 + 1000) % 1000 + 8;
-  alignT = setTimeout(() => { tickTimer(); scheduleTick(); }, wait);
+  alignT = setTimeout(() => { tickTimer(); tickSalon(); scheduleTick(); }, wait);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { tickTimer(); scheduleTick(); } });
 function tickTimer() {
@@ -2044,7 +2068,7 @@ function renderSalon() {
   const online = ppl.map(p => {
     const pr = p.pr || {};
     const sk = SUBJ[pr.s] ? pr.s : null, ty = TYPES[pr.tt] || null;
-    const ms = peerElapsed(p);
+    const ms = liveShown(p);
     let st = "Çevrimdışı", dotCls = "off", elCls = "";
     if (pr.st === "calisiyor") { st = sk ? `${SUBJ[sk].n}${ty ? " · " + ty : ""}` : "Çalışıyor"; dotCls = ""; }
     else if (pr.st === "mola") { st = `Molada${sk ? " · " + SUBJ[sk].n : ""}`; dotCls = "pause"; elCls = " brk"; }
@@ -2052,7 +2076,7 @@ function renderSalon() {
     const tag = canOpen(p.key) ? ["button", ` type="button" data-profile="${esc(p.key)}"`] : ["div", ""];
     return `<${tag[0]} class="person${pr.st === "offline" ? " is-off" : ""}"${tag[1]}><span class="av-wrap">${avatarHTML(p.key)}<span class="dot ${dotCls}"></span></span>
       <span class="who"><span class="nm">${esc(person(p.key).name)}${p.isMe ? `<span class="you-tag">sen</span>` : ""}</span><span class="st">${sk && ms !== null ? badge(sk, "sm") : ""}<span>${esc(st)}</span></span></span>
-      <span class="elapsed${elCls}">${ms !== null ? esc(fmtMin(ms / 60000)) : ""}<small>bugün ${esc(fmtMin(tot[p.key]))}</small></span></${tag[0]}>`;
+      <span class="elapsed${elCls}">${ms !== null ? `<span data-live="${esc(p.key)}">${fmtClock(ms)}</span>` : ""}<small>bugün ${esc(fmtMin(tot[p.key]))}</small></span></${tag[0]}>`;
   }).join("");
   const studying = ppl.filter(p => p.pr.st === "calisiyor").length;
   const rooms = myRooms();
