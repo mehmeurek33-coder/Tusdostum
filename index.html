@@ -1365,6 +1365,7 @@ function setTimer(t) {
   else if (S.mode === "cloud") { writeKronometre(); writeRoot({ timer: S.timer }); }
   syncAlerts();
   pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();
+  scheduleTick();
 }
 function startTimer() {
   const now = Date.now();
@@ -1740,31 +1741,50 @@ function renderTimerCard() {
     <div class="tc-actions" style="margin-top:6px"><button class="btn ghost" data-act="manual" type="button"${ro ? " disabled" : ""}>Kronometresiz elle ekle</button></div>`);
   tickTimer();
 }
+// Ekranda gösterilen süreler: hepsi aynı anda (çalışma/mola başlangıcının saniye sınırında) bir saniye ilerler.
+// Önceki oturumların küsuratı atılır; böylece büyük sayaç ile "Son oturum" aynı anda değişir.
+function shownTimes(t, now) {
+  const run = t.runStart ? Math.floor(Math.min(Math.max(0, now - t.runStart), MAX_RUN_MS) / 1000) * 1000 : 0;
+  const work = Math.floor(num(t.workMs) / 1000) * 1000 + run;
+  const brk = t.breakStart ? Math.floor(Math.max(0, now - t.breakStart) / 1000) * 1000 : 0;
+  return { work, brk, sb: sinceBreak(t, now) === null ? null : run };
+}
+// Saniye sınırına hizalı tik: her saniye eşit sürede ilerler (250 ms'lik genel döngüden bağımsız)
+let alignT = null;
+function scheduleTick() {
+  clearTimeout(alignT); alignT = null;
+  const t = S.timer, anchor = t && (t.breakStart || t.runStart);
+  if (!anchor || document.hidden) return;
+  const wait = 1000 - ((Date.now() - anchor) % 1000 + 1000) % 1000 + 8;
+  alignT = setTimeout(() => { tickTimer(); scheduleTick(); }, wait);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { tickTimer(); scheduleTick(); } });
 function tickTimer() {
   const t = S.timer, now = Date.now();
   const el = $("clock");
   if (el) {
     if (!t) { el.textContent = "00:00:00"; const a = $("clockAlt"); if (a) a.textContent = ""; }
     else {
-      const brk = onBreak(t), work = timerWork(t, now), rest = timerBreak(t, now);
-      el.textContent = fmtClock(brk ? curBreak(t, now) : work);
+      const brk = onBreak(t), rest = timerBreak(t, now), sh = shownTimes(t, now), work = sh.work;
+      el.textContent = fmtClock(brk ? sh.brk : work);
       const alt = $("clockAlt");
       if (alt) alt.textContent = brk ? `Çalışma ${fmtClock(work)} · Toplam mola ${fmtMin(rest / 60000)}` : (rest > 0 ? `Toplam mola: ${fmtMin(rest / 60000)}` : "");
-      const seg = $("clockSeg"), sb = sinceBreak(t, now);
+      const seg = $("clockSeg"), sb = sh.sb;
       if (seg) { seg.hidden = sb === null; if (sb !== null) seg.innerHTML = `<span>Son oturum</span>${fmtClock(sb)}`; }
       if ((runOverflow(t, now) > 0) !== S.lastOverflow || breakOver(t, now) !== S.lastBreakOver || (runOverflow(t, now) <= 0 && workOver(t, now)) !== S.lastWorkOver) renderTimerCard();
     }
   }
   const fc = $("focusClock");
   if (fc && t) {
-    const brk = onBreak(t), work = timerWork(t, now), sb = sinceBreak(t, now);
-    fc.textContent = fmtClock(brk ? curBreak(t, now) : work);
+    const brk = onBreak(t), sh = shownTimes(t, now), work = sh.work, sb = sh.sb;
+    fc.textContent = fmtClock(brk ? sh.brk : work);
     fc.classList.toggle("brk", brk);
     const fs = $("focusSub");
     if (fs) fs.textContent = brk ? `Mola · Çalışma ${fmtClock(work)}` : (sb !== null ? `Son oturum ${fmtClock(sb)}` : "");
   }
   const st = $("stripTime");
-  if (st && t) { const brk = onBreak(t); st.textContent = fmtClock(brk ? curBreak(t, now) : timerWork(t, now)); }
+  if (st && t) { const sh = shownTimes(t, now); st.textContent = fmtClock(onBreak(t) ? sh.brk : sh.work); }
+  if (t && !alignT) scheduleTick();
 }
 $("timerCard").addEventListener("change", e => {
   if (e.target.id !== "tSubject" || S.timer) return;              // A4 (1. tur): kronometre açıkken ders değişmez

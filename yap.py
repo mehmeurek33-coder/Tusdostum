@@ -151,8 +151,8 @@ degis("function firstDayKey() {", UYARI, "uyarı işlevleri")
 degis('if (code === "invalid_argument") { S.canWrite = false; toast("Bu sayfada kayıt ekleme iznin yok."); }',
       'if (code === "invalid_argument" || code === "not_permitted") { S.canWrite = false; toast("Hesabın kayıt ekleyemiyor."); }', "yazma hatası")
 
-degis("  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();\n}\nfunction startTimer() {",
-      "  syncAlerts();\n  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();\n}\nfunction startTimer() {", "setTimer")
+degis("  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();\n  scheduleTick();\n}\nfunction startTimer() {",
+      "  syncAlerts();\n  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();\n  scheduleTick();\n}\nfunction startTimer() {", "setTimer")
 degis("workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  requestWake();",
       "workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  if (workWarnMin()) armSound();\n  requestWake();", "başlat")
 degis("if (breakWarnMin()) { armSound(); startBreakAudio(); requestWake(); }",
