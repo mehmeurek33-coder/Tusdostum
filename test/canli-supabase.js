@@ -71,8 +71,8 @@ const TIP = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; char
 
     const B = await kisi();
     await kayit(B, mail('b'), 'Deneme B');
-    ok('Var olan adla oda kurulamıyor', (await odaDene(B, 'kur', oda.toUpperCase())) === 'Bu adda bir oda var.');
-    ok('Odaya katıldı', (await odaDene(B, 'katil', oda.toLowerCase())) === '');
+    ok('Var olan adla oda kurulamıyor', (await odaDene(B, 'kur', oda.toLocaleUpperCase('tr-TR'))) === 'Bu adda bir oda var.');
+    ok('Odaya katıldı', (await odaDene(B, 'katil', oda.toLocaleLowerCase('tr-TR'))) === '');
     let sa = null;
     for (let i = 0; i < 30; i++) { await bekle(500); sa = await satir(B, 'Deneme A'); if (sa && /Çalışıyor|Anatomi|Konu/.test(sa.metin)) break; }
     ok('B, odada A\'yı çalışırken görüyor (canlı bağlantı)', !!sa && /Anatomi|Konu|Çalışıyor/.test(sa.metin) && sa.dugme, JSON.stringify(sa));
