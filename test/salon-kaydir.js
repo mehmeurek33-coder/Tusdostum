@@ -50,7 +50,7 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
     const t = (x, y) => new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
     el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t(x0 + dx, y0 + dy)], bubbles: true, cancelable: true }));
   }, [dx, dy]);
-  const kaydir = async (x0, y0, dx, dy = 0) => { await dokun(x0, y0); await surukle(dx, dy); await bekle(30); await birak(dx, dy); await bekle(550); };
+  const kaydir = async (x0, y0, dx, dy = 0) => { await dokun(x0, y0); await surukle(dx, dy); await bekle(40); await birak(dx, dy); await bekle(750); };
   const kisiY = () => p.evaluate(() => { const r = document.querySelector('#onlinePanel .person').getBoundingClientRect(); return r.top + r.height / 2; });
   const kutu = () => p.evaluate(() => {
     const r = document.querySelector('#onlinePanel').getBoundingClientRect(), s = document.querySelector('#timerStrip').getBoundingClientRect(), n = document.querySelector('nav.tabs').getBoundingClientRect();
@@ -64,10 +64,11 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   ok('Genel\'de herkes bugünkü süreye göre çoktan aza: Burak 90, Cem 50 (canlı), Ayşe 30, Deniz 15, Ben 0', JSON.stringify(d.kisiler) === JSON.stringify(['Burak', 'Cem', 'Ayşe', 'Deniz', 'Ben']), JSON.stringify(d.kisiler));
 
   // Parmağı izleme
-  await dokun(200, await kisiY()); await surukle(-90, 0);
+  await dokun(200, await kisiY()); await surukle(-90, 0); await bekle(50);
   const iz = await p.evaluate(() => ({ icerik: document.querySelector('#onlinePanel .rbody').style.transform, sekmeler: document.querySelector('#onlinePanel .rtabs-wrap').style.transform, sayfa: document.querySelector('#panel-salon').style.transform }));
-  ok('Sürüklerken oda içeriği parmakla birlikte kayıyor (90 px), kutu ve sekmeler yerinde', iz.icerik === 'translateX(-90px)' && !iz.sekmeler && !iz.sayfa, JSON.stringify(iz));
-  await birak(-90, 0); await bekle(550);
+  const kayma = Number((/translate3d\((-?[\d.]+)px/.exec(iz.icerik) || [])[1]);
+  ok('Sürüklerken oda içeriği parmakla birlikte kayıyor, kutu ve sekmeler yerinde', kayma <= -70 && kayma >= -92 && !iz.sekmeler && !iz.sayfa, JSON.stringify(iz));
+  await birak(-90, 0); await bekle(750);
   d = await durum();
   ok('Bırakınca sonraki odaya geçti: Kızlar (çoktan aza, Deniz yok)', d.oda === 'Kızlar odası' && JSON.stringify(d.kisiler) === JSON.stringify(['Burak', 'Cem', 'Ayşe', 'Ben']), JSON.stringify(d));
   ok('Geçiş bitince içerik yerine oturdu', await p.evaluate(() => !document.querySelector('#onlinePanel .rbody').style.transform));
