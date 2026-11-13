@@ -80,7 +80,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
     s1 = await cagir();
     ok('Vakti gelince işlev bildirimi yolluyor', s1.gonderilen === 1 && S.pushlar.length === 1, JSON.stringify(s1));
     const tekrar = await S.sql(`select sira, kalan, round(extract(epoch from zaman - now()))::int as sn from uyarilar where uid = $1`, [uid]);
-    ok('Gönderilen uyarı 3 dk sonrası için tekrar kuruldu, hemen ikinci kez gitmiyor', tekrar.length === 1 && tekrar[0].sira === 1 && tekrar[0].kalan === 1 && tekrar[0].sn > 160 && tekrar[0].sn <= 181 && (await cagir()).gonderilen === 0, JSON.stringify(tekrar));
+    ok('Gönderilen uyarı 5 dk sonrası için tekrar kuruldu (3 saat boyunca), hemen ikinci kez gitmiyor', tekrar.length === 1 && tekrar[0].sira === 1 && tekrar[0].kalan === 35 && tekrar[0].sn > 280 && tekrar[0].sn <= 301 && (await cagir()).gonderilen === 0, JSON.stringify(tekrar));
     let ileti = null;
     try { ileti = ece.decrypt(S.pushlar[0].govde, { version: 'aes128gcm', privateKey: alici, authSecret: auth }).toString('utf8'); } catch (e) { ileti = 'HATA ' + e.message; }
     ok('Telefon iletiyi kendi anahtarıyla çözebiliyor', /Mola bitti/.test(ileti), ileti);

@@ -106,8 +106,8 @@ select tdt.yaz('Tekrar hakkı kaydedilir; 3 saat sınırı tekrarlanmaz', (selec
 reset request.jwt.claim.sub; set role service_role;
 create temp table t1 as select * from td_vadesi_gelenler();
 select tdt.yaz('İlk gönderim: sıra 0', (select count(*) = 2 and max(sira) = 0 from t1));
-select tdt.yaz('Mola uyarısı 3 dk sonrasına yeniden kuruldu (sıra 1, kalan 1); sınır kurulmadı',
-  (select count(*) = 1 and min(tur) = 'mola' and min(sira) = 1 and min(kalan) = 1 and min(zaman) between now() + interval '170 seconds' and now() + interval '190 seconds' from uyarilar));
+select tdt.yaz('Mola uyarısı 5 dk sonrasına yeniden kuruldu (sıra 1, kalan 1); sınır kurulmadı',
+  (select count(*) = 1 and min(tur) = 'mola' and min(sira) = 1 and min(kalan) = 1 and min(zaman) between now() + interval '290 seconds' and now() + interval '310 seconds' from uyarilar));
 update uyarilar set zaman = now();
 create temp table t2 as select * from td_vadesi_gelenler();
 update uyarilar set zaman = now();

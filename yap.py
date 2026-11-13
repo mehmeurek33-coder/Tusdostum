@@ -79,11 +79,13 @@ const workWarnMin = () => { const v = Number((S.settings || {}).workWarn); retur
 const runMs = (t, now = Date.now()) => (t && t.runStart ? Math.max(0, now - t.runStart) : 0);
 const workOver = (t, now = Date.now()) => { const w = workWarnMin(); return !!w && runMs(t, now) >= w * 60000 && runMs(t, now) < MAX_RUN_MS; };
 function workAlert() {
-  const t = S.timer; if (!t || !t.runStart || S.workWarned === t.runStart) return;
-  S.workWarned = t.runStart;
+  const t = S.timer, w = workWarnMin(); if (!t || !t.runStart || !w) return;
+  const n = Math.floor((runMs(t) - w * 60000) / ALERT_EVERY_MS), key = t.runStart + ":" + n;
+  if (n < 0 || S.workWarned === key) return;
+  S.workWarned = key;
   beep();
   try { if (navigator.vibrate) navigator.vibrate([250, 120, 250]); } catch {}
-  toast(`Aralıksız çalışman ${workWarnMin()} dakikayı geçti.`);
+  toast(`Aralıksız çalışman ${w + n * 5} dakikayı geçti.`);
 }
 // Ekran kapalıyken bildirim: sunucuya "şu saatte haber ver" listesi bırakılır
 const pushOn = () => { const A = window.TusAltyapi; return !!(A && S.mode === "cloud" && A.bildirim.acik()); };
@@ -101,9 +103,10 @@ function enablePush(after) {
 function syncAlerts() {
   const A = window.TusAltyapi; if (!A || S.mode !== "cloud" || readOnly()) return;
   const t = S.timer, now = Date.now(), out = [];
-  if (t && onBreak(t)) { const w = breakWarnMin(); if (w) out.push({ tur: "mola", zaman: t.breakStart + w * 60000, dk: w, tekrar: 2 }); }
+  // ilk uyarıdan sonra 5 dakikada bir: mola en çok 3 saat, çalışma 3 saatlik sınıra kadar
+  if (t && onBreak(t)) { const w = breakWarnMin(); if (w) out.push({ tur: "mola", zaman: t.breakStart + w * 60000, dk: w, tekrar: 36 }); }
   else if (t && t.runStart) {
-    const w = workWarnMin(); if (w) out.push({ tur: "calisma", zaman: t.runStart + w * 60000, dk: w, tekrar: 2 });
+    const w = workWarnMin(); if (w) out.push({ tur: "calisma", zaman: t.runStart + w * 60000, dk: w, tekrar: Math.max(0, Math.floor((179 - w) / 5)) });
     out.push({ tur: "sinir", zaman: t.runStart + MAX_RUN_MS, dk: 180 });
   }
   A.bildirim.ayarla(out.filter(x => x.zaman > now + 5000));
