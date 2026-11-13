@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="f843ea00144c">
+<meta name="td-surum" content="c805e44f565c">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -862,6 +862,15 @@ function dayTimed(uid) {
   const raw = [];
   for (const [id, v] of items) { if (!id) continue; const e = normOwnTimed(id, v); if (e && e.d === todayKey()) raw.push({ ...e, n: "", k: "" }); }
   return strictList(raw);
+}
+// Kişinin başlangıç günü: kendisi için ilk kayıt/ilk gün; başkası için katılma günü. Daha eski bir kaydı varsa
+// (ör. yedekten aktarılmış) o gün başlangıç sayılır. Bilinmiyorsa null.
+function startKeyOf(uid, son) {
+  let f = null;
+  if (uid === myId()) f = firstDayKey();
+  else { const j = num((S.roots[uid] || {}).joinedAt); if (j > 1e12) f = dkey(new Date(j)); }
+  for (const d of Object.keys(son || {})) if (son[d].m > 0 && (!f || d < f)) f = d;
+  return f;
 }
 // Son 10 gün (profil). Kendi verim için o anki hesap, başkası için ortak belge.
 function sonOf(uid) {
@@ -2528,6 +2537,11 @@ function renderProfile() {
   }
   const todayM = (son[tk] ? son[tk].m : 0) + live;
   if (live && !(son[tk] && son[tk].m)) worked++;
+  // Ortalama ve çalışılan gün, kişinin başladığı günden itibaren (en çok son 10 gün) hesaplanır.
+  // Bugün henüz çalışılmadıysa bugün ortalamaya katılmaz (gün bitmedi).
+  const bas = startKeyOf(uid, son), ilk = days[0];
+  const pencere = bas && bas > ilk ? Math.max(1, daysBetween(bas, tk) + 1) : SHARE_DAYS;
+  const ortGun = todayM > 0 || pencere === 1 ? pencere : pencere - 1;
   const p = ppl.find(x => x.key === uid);
   let status = "Çevrimdışı";
   if (p) {
@@ -2573,8 +2587,8 @@ function renderProfile() {
     <div class="tiles">
       <div class="tile"><div class="l">Bugün</div><div class="v">${esc(fmtMin(todayM))}</div><div class="s">${live ? `canlı ${esc(fmtMin(live))} dahil` : (son[tk] && son[tk].q ? `${fmtNum(son[tk].q)} soru` : "–")}</div></div>
       <div class="tile"><div class="l">Son 10 gün</div><div class="v">${esc(fmtMin(tot.m + live))}</div><div class="s">${tot.q ? `${fmtNum(tot.q)} soru` : "–"}</div></div>
-      <div class="tile"><div class="l">Günlük ortalama</div><div class="v">${esc(fmtMin((tot.m + live) / SHARE_DAYS))}</div></div>
-      <div class="tile"><div class="l">Çalışılan gün</div><div class="v num">${worked}/${SHARE_DAYS}</div><div class="s">${tot.q ? `%${pct(tot.c, tot.q)} doğru` : ""}</div></div>
+      <div class="tile"><div class="l">Günlük ortalama</div><div class="v">${esc(fmtMin(ortGun ? (tot.m + live) / ortGun : 0))}</div></div>
+      <div class="tile"><div class="l">Çalışılan gün</div><div class="v num">${worked}/${pencere}</div><div class="s">${tot.q ? `%${pct(tot.c, tot.q)} doğru` : ""}</div></div>
     </div>
     <div><h3 class="sec-title" style="margin-bottom:6px">Son 10 gün</h3>${chart}</div>
     <div><h3 class="sec-title" style="margin-bottom:8px">Son 10 günde dersler</h3>${subjHTML}</div>
