@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="614c280de2a4">
+<meta name="td-surum" content="f843ea00144c">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -2204,9 +2204,14 @@ window.addEventListener("resize", () => { if (S.tab === "salon") fitSalon(); });
   let d = null;
   const KAPALI = "input, textarea, select, .rtabs, .tbl-wrap, .chart-box, nav.tabs";
   const CIKIS = "cubic-bezier(.25,.8,.35,1)", GIRIS = "cubic-bezier(.16,1,.3,1)";
-  const bolge = el => {
+  const KENAR = 24;                                                 // oda çerçevesinin sağ/sol kenar şeridi: sekme değiştirir
+  const tamEkran = () => { try { return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch { return false; } };
+  const bolge = (el, x) => {
     if (document.documentElement.classList.contains("lock") || el.closest(KAPALI)) return null;
-    if (S.tab === "salon" && el.closest("#onlinePanel")) return "oda";
+    if (S.tab === "salon" && el.closest("#onlinePanel")) {
+      const r = $("onlinePanel").getBoundingClientRect();
+      return x < r.left + KENAR || x > r.right - KENAR ? "sekme" : "oda";
+    }
     // içerik alanı, kronometre şeridi ve kısa sayfalarda içeriğin altında kalan boş arka plan
     if (el.closest("main, #timerStrip") || el === document.body || el === document.documentElement) return "sekme";
     return null;
@@ -2223,8 +2228,10 @@ window.addEventListener("resize", () => { if (S.tab === "salon") fitSalon(); });
   document.addEventListener("touchstart", e => {
     d = null;
     if (e.touches.length !== 1 || S.gecis) return;
-    const t = e.touches[0]; if (t.clientX < 18 || t.clientX > innerWidth - 18) return;   // kenar hareketleri telefonundur
-    const tur = bolge(e.target); if (!tur) return;
+    // Safari sekmesinde ekranın en kenarı tarayıcının "geri" hareketidir; ana ekrandan açılan uygulamada değil
+    const t = e.touches[0], kenar = tamEkran() ? 0 : 18;
+    if (t.clientX < kenar || t.clientX > innerWidth - kenar) return;
+    const tur = bolge(e.target, t.clientX); if (!tur) return;
     d = { tur, x: t.clientX, y: t.clientY, yatay: null, el: null, dx: 0, son: [{ x: t.clientX, t: performance.now() }] };
   }, { passive: true });
   document.addEventListener("touchmove", e => {

@@ -83,7 +83,23 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   await kaydir(200, await kisiY(), 60, 200); d = await durum();
   ok('Aşağı/yukarı hareket (sayfayı gezinme) oda değiştirmiyor', d.oda === 'Kızlar odası', JSON.stringify(d));
   await kaydir(8, await kisiY(), 150); d = await durum();
-  ok('Ekran kenarından başlayan hareket bir şey değiştirmiyor', d.oda === 'Kızlar odası' && d.sekme === '#salon', JSON.stringify(d));
+  ok('Safari sekmesinde ekranın en kenarından başlayan hareket bir şey değiştirmiyor (tarayıcının geri hareketi)', d.oda === 'Kızlar odası' && d.sekme === '#salon', JSON.stringify(d));
+  // Çerçevenin sağ/sol kenar şeridinden kaydırma: sekmeler
+  const cer = await p.evaluate(() => { const r = document.querySelector('#onlinePanel').getBoundingClientRect(); return { sol: r.left, sag: r.right }; });
+  await kaydir(cer.sol + 10, await kisiY(), -130); d = await durum();
+  ok('Çerçevenin sol kenar şeridinden sola kaydırınca oda değil sekme değişiyor: Dersler', d.sekme === '#dersler', JSON.stringify(d));
+  await p.evaluate(() => { location.hash = 'salon'; }); await bekle(400);
+  await kaydir(cer.sag - 10, await kisiY(), -130); d = await durum();
+  ok('Çerçevenin sağ kenar şeridinden de sekme değişiyor', d.sekme === '#dersler', JSON.stringify(d));
+  await p.evaluate(() => { location.hash = 'salon'; }); await bekle(400);
+  await kaydir(cer.sol + 40, await kisiY(), -130); d = await durum();
+  ok('Çerçevenin içinden (kenara 40 px) kaydırınca yine oda değişiyor', d.sekme === '#salon' && d.oda === 'TSM odası', JSON.stringify(d));
+  await kaydir(200, await kisiY(), 130); await bekle(200);
+  // Ana ekrandan açılan uygulama: ekranın en kenarı da sekme değiştirir
+  await p.evaluate(() => { Object.defineProperty(navigator, 'standalone', { get: () => true, configurable: true }); });
+  await kaydir(4, await kisiY(), 140); d = await durum();
+  ok('Ana ekran uygulamasında ekranın en sol kenarından sağa kaydırınca önceki sekme: Bugün', d.sekme === '#bugun', JSON.stringify(d));
+  await p.evaluate(() => { location.hash = 'salon'; delete navigator.standalone; Object.defineProperty(navigator, 'standalone', { get: () => false, configurable: true }); }); await bekle(400);
 
   // Kutunun altındaki boşluk ve kronometre şeridi: sekmeler
   k = await kutu();
