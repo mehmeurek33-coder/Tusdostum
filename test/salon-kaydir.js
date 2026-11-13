@@ -102,6 +102,14 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   ok('Kronometre şeridinde sağa kaydırınca önceki sekme: Bugün (kronometre)', d.sekme === '#bugun', JSON.stringify(d));
   await kaydir(200, 400, -130); d = await durum();
   ok('Bugün\'de (kronometre) sola kaydırınca Salon\'a (odalara) geçiyor', d.sekme === '#salon', JSON.stringify(d));
+  // Kısa sayfa (Deneme): içeriğin altındaki boş arka planda kaydırma
+  await p.evaluate(() => { location.hash = 'denemeler'; }); await bekle(400);
+  const bos = await p.evaluate(() => { const y = document.querySelector('#timerStrip').getBoundingClientRect().top - 120; const el = document.elementFromPoint(200, y); return { y, ad: el.tagName + (el.id ? '#' + el.id : '') }; });
+  await kaydir(200, bos.y, 130); d = await durum();
+  ok(`Deneme'de içeriğin altındaki boş alanda (${bos.ad}) sağa kaydırınca önceki sekme: Dersler`, d.sekme === '#dersler', JSON.stringify([bos, d]));
+  await p.evaluate(() => { location.hash = 'denemeler'; }); await bekle(400);
+  await kaydir(200, bos.y, -130); d = await durum();
+  ok('Aynı boş alanda sola kaydırınca sonraki sekme: Kayıtlar', d.sekme === '#kayitlar', JSON.stringify(d));
   await p.evaluate(() => { location.hash = 'bugun'; }); await bekle(300);
   await kaydir(200, 400, 150); d = await durum();
   ok('İlk sekmede sağa kaydırınca esneyip yerinde kalıyor', d.sekme === '#bugun', JSON.stringify(d));
