@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>TusDostum · bildirim anahtarı</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px 16px; color: #13211F; background: #F2F5F4; }
+  h1 { font-size: 22px; }
+  button { font: inherit; font-weight: 700; padding: 12px 18px; border-radius: 12px; border: 0; background: #0D7A64; color: #fff; }
+  label { display: block; font-weight: 600; margin-top: 18px; font-size: 14px; }
+  textarea { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-monospace, monospace; padding: 10px; border-radius: 10px; border: 1px solid #D8E1DF; background: #fff; }
+  .not { font-size: 14px; color: #56655F; }
+  .uyari { background: #FFF4E0; color: #7A4A06; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
+  @media (prefers-color-scheme: dark) { body { background: #0E1513; color: #E6EEEC; } textarea { background: #17211F; color: #E6EEEC; border-color: #2A3835; } .not { color: #9DB0AB; } .uyari { background: #3A2A10; color: #F6D29A; } }
+</style>
+</head>
+<body>
+<h1>Bildirim anahtarı üret</h1>
+<p class="not">Bu sayfa bir kez kullanılır. Anahtarlar tarayıcında üretilir, hiçbir yere gönderilmez.</p>
+<p><button id="uret" type="button">Anahtar çifti üret</button></p>
+<label for="acik">Açık anahtar → <code>config.js</code> içindeki <code>vapidAcikAnahtar</code> ve Supabase'deki <code>VAPID_ACIK</code></label>
+<textarea id="acik" rows="3" readonly></textarea>
+<label for="ozel">Özel anahtar → yalnızca Supabase'deki <code>VAPID_OZEL</code></label>
+<textarea id="ozel" rows="2" readonly></textarea>
+<p class="uyari">Özel anahtarı GitHub'a ya da sohbete yazma. Yalnızca Supabase → Edge Functions → Secrets bölümüne yapıştır.</p>
+<script>
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+document.getElementById("uret").addEventListener("click", async () => {
+  const k = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  document.getElementById("acik").value = b64u(await crypto.subtle.exportKey("raw", k.publicKey));
+  document.getElementById("ozel").value = (await crypto.subtle.exportKey("jwk", k.privateKey)).d;
+});
+</script>
+</body>
+</html>
