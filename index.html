@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="df38268c813e">
+<meta name="td-surum" content="8db779fe18ef">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -253,8 +253,13 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 .month-nav .icon-btn { flex: none; }
 
 /* Salon */
-.salon-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
-@media (max-width: 820px) { .salon-grid { grid-template-columns: minmax(0, 1fr); } }
+.salon-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; max-width: 760px; margin: 0 auto; }
+/* Odalar arası kaydırınca küçük bir kayma */
+@keyframes slL { from { transform: translateX(28px); opacity: .35; } to { transform: none; opacity: 1; } }
+@keyframes slR { from { transform: translateX(-28px); opacity: .35; } to { transform: none; opacity: 1; } }
+#onlinePanel.sl-l > :not(.rtabs-wrap) { animation: slL .2s ease-out; }
+#onlinePanel.sl-r > :not(.rtabs-wrap) { animation: slR .2s ease-out; }
+@media (prefers-reduced-motion: reduce) { #onlinePanel.sl-l > *, #onlinePanel.sl-r > * { animation: none; } }
 .av { width: 34px; height: 34px; border-radius: 50%; flex: none; object-fit: cover; background: var(--surface-2); display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; }
 .av { font-size: 19px; line-height: 1; }
 .av.sm { width: 26px; height: 26px; font-size: 14px; }
@@ -527,7 +532,6 @@ html, body { margin: 0; }   /* Claude sayfa iskeleti bunu kendisi veriyordu */
   <section data-tab-panel="salon" id="panel-salon" role="tabpanel" aria-labelledby="tab-salon" hidden>
     <div class="salon-grid">
       <div class="panel" id="onlinePanel"></div>
-      <div class="panel" id="rankPanel"></div>
     </div>
   </section>
 
@@ -2151,7 +2155,8 @@ function renderSalon() {
   const ppl = presentPeople();
   const tot = {};
   for (const p of ppl) tot[p.key] = agg(dayTimed(p.key)).dk + Math.floor(liveMs(p.key, ppl) / 60000);
-  ppl.sort((a, b) => (ST_RANK[b.pr.st] - ST_RANK[a.pr.st]) || (tot[b.key] - tot[a.key]) || (b.isMe - a.isMe));
+  // Odadakiler bugünkü süreye göre (canlı kronometre dahil, yalnızca kronometreli oturumlar) çoktan aza
+  ppl.sort((a, b) => (tot[b.key] - tot[a.key]) || (ST_RANK[b.pr.st] - ST_RANK[a.pr.st]) || (b.isMe - a.isMe));
   const canOpen = uid => uid === me || ((rc !== GENEL || S.isOwner) && !!S.roots[uid]);
   const online = ppl.map(p => {
     const pr = p.pr || {};
@@ -2180,30 +2185,29 @@ function renderSalon() {
     if (a && bar && (a.offsetLeft < bar.scrollLeft || a.offsetLeft + a.offsetWidth > bar.scrollLeft + bar.clientWidth)) bar.scrollLeft = a.offsetLeft - 8;
   }
 
-  const rows = ppl.filter(p => S.roots[p.key] || p.key === me).map(p => {
-    const id = p.key, a = agg(dayTimed(id));
-    const live = Math.floor(liveMs(id, ppl) / 60000);
-    return { id, live, on: p.pr.st !== "offline", v: S.rankMetric === "dk" ? a.dk + live : a.q,
-      sub: S.rankMetric === "dk" ? (live ? `${fmtMin(a.dk)} + canlı ${fmtMin(live)}` : `${fmtNum(a.q)} soru`) : (a.q ? `%${pct(a.c, a.q)} doğru` : "") };
-  }).filter(r => r.v > 0 || r.id === me).sort((a, b) => b.v - a.v);
-  const max = Math.max(1, ...rows.map(r => r.v));
-  setHTML($("rankPanel"), `
-    <div class="panel-head"><h2>Canlı sıralama</h2>
-      <div class="seg two" style="width:200px" role="radiogroup" aria-label="Ölçüt" data-seg="metric">${[["dk", "Süre"], ["q", "Soru"]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${S.rankMetric === k}" data-val="${k}">${l}</button>`).join("")}</div>
-    </div>
-    ${rows.some(r => r.v > 0) ? rows.map((r, i) => { const tag = canOpen(r.id) ? ["button", ` type="button" data-profile="${esc(r.id)}"`] : ["div", ""]; return `
-      <${tag[0]} class="rank-row${r.id === me ? " me" : ""}"${tag[1]}>
-        <span class="pos">${r.v > 0 ? i + 1 : "–"}</span>
-        <span class="av-wrap">${avatarHTML(r.id, "sm")}${r.on ? `<span class="dot" style="width:9px;height:9px"></span>` : ""}</span>
-        <span style="min-width:0;display:block"><span style="display:flex;align-items:center;gap:6px;min-width:0"><span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(person(r.id).name)}</span>${r.live ? `<span class="tag live-tag" style="margin:0;flex:none">canlı</span>` : ""}</span><span class="bar" style="display:block"><i style="width:${Math.round(r.v / max * 100)}%${S.rankMetric === "q" ? ";background:var(--soru)" : ""}"></i></span></span>
-        <span style="text-align:right;display:block"><span class="val">${S.rankMetric === "dk" ? esc(fmtMin(r.v)) : fmtNum(r.v)}</span><span class="small muted num" style="display:block">${esc(r.sub)}</span></span>
-      </${tag[0]}>`; }).join("") : `<div class="empty"><strong>Bugün henüz kimse çalışmadı</strong></div>`}
-`);
 }
-$("rankPanel").addEventListener("click", e => {
-  const b = e.target.closest("[data-seg='metric'] button"); if (!b) return;
-  S.rankMetric = b.dataset.val; renderSalon();
-});
+// Salonda sağa/sola kaydırarak odalar arası geçiş (sola: sonraki oda, sağa: önceki)
+(() => {
+  let d = null;
+  const sec = $("panel-salon");
+  sec.addEventListener("touchstart", e => {
+    d = null;
+    if (e.touches.length !== 1 || e.target.closest(".rtabs, input, textarea, select")) return;
+    const t = e.touches[0]; if (t.clientX < 20 || t.clientX > innerWidth - 20) return;      // kenar hareketlerine karışma
+    d = { x: t.clientX, y: t.clientY, t: Date.now() };
+  }, { passive: true });
+  sec.addEventListener("touchend", e => {
+    if (!d) return;
+    const t = e.changedTouches[0], dx = t.clientX - d.x, dy = t.clientY - d.y, dt = Date.now() - d.t; d = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || dt > 900) return;
+    const keys = [GENEL, ...myRoomKeys()], j = keys.indexOf(myRoomCode()) + (dx < 0 ? 1 : -1);
+    if (j < 0 || j >= keys.length) return;
+    setActiveRoom(keys[j]); render();
+    const pnl = $("onlinePanel");
+    pnl.classList.remove("sl-l", "sl-r"); void pnl.offsetWidth; pnl.classList.add(dx < 0 ? "sl-l" : "sl-r");
+    clearTimeout(pnl.__slT); pnl.__slT = setTimeout(() => pnl.classList.remove("sl-l", "sl-r"), 260);
+  }, { passive: true });
+})();
 
 // ---------- Dersler (B2, B4) ----------
 function renderDersler() {

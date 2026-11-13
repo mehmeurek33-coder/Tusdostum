@@ -187,8 +187,8 @@ const gun = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${p
 
     // ---------- 6. Canlı sıralama ----------
     await B.evaluate(() => { location.hash = 'salon'; }); await bekle(400);
-    const rank = (await B.textContent('#rankPanel')).replace(/\s+/g, ' ');
-    ok('Canlı sıralamada A önde (bugünkü oturumu + çalışan kronometresi)', rank.indexOf('Ayşe') >= 0 && (rank.indexOf('Burak') < 0 || rank.indexOf('Ayşe') < rank.indexOf('Burak')), rank.slice(0, 200));
+    const sira = await B.evaluate(() => [...document.querySelectorAll('#onlinePanel .person .nm')].map(x => x.textContent));
+    ok('Odada en çok çalışan üstte: A (bugünkü oturumu + çalışan kronometresi) B\'nin önünde', sira.findIndex(n => n.includes('Ayşe')) >= 0 && sira.findIndex(n => n.includes('Ayşe')) < sira.findIndex(n => n.includes('Burak')), JSON.stringify(sira));
 
     // ---------- 7. Yenileme ve çıkış/giriş ----------
     await A.reload(); await bekle(1800);

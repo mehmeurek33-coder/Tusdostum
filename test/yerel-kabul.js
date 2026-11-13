@@ -140,7 +140,7 @@ function seed14() {
     const strip = await p.evaluate(() => { const s = document.querySelector('#timerStrip'); return { vis: !s.hidden, t: (document.querySelector('#stripTime') || {}).textContent }; });
     ok('M5 Kronometre şeridi Salon sekmesinde görünüyor ve akıyor', strip.vis && strip.t && strip.t !== '00:00:00', JSON.stringify(strip));
     // profil
-    await p.click('.rank-row'); await p.waitForTimeout(500);
+    await p.click('#onlinePanel [data-profile]'); await p.waitForTimeout(500);
     const prof = await p.evaluate(() => {
       const ov = document.querySelector('#profileOverlay');
       return { days: ov.querySelectorAll('.pday').length, subj: ov.querySelectorAll('.dist .r').length, txt: ov.textContent.includes('Son 10 gün'), sheetW: ov.querySelector('.sheet-body').scrollWidth, bodyW: ov.querySelector('.sheet-body').clientWidth, closeH: ov.querySelector('.close').getBoundingClientRect().height };

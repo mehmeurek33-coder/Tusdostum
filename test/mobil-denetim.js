@@ -73,7 +73,7 @@ async function audit(p, name) {
 
     await shot('01-bugun'); await rep('bugun');
     await p.click('#tab-salon'); await p.waitForTimeout(400); await shot('02-salon'); await rep('salon');
-    await p.click('.rank-row'); await p.waitForTimeout(400); await shot('03-profil', false); await rep('profil');
+    await p.click('#onlinePanel [data-profile]'); await p.waitForTimeout(400); await shot('03-profil', false); await rep('profil');
     await p.click('[data-close-prof]'); await p.waitForTimeout(300);
     await p.click('#tab-dersler'); await p.waitForTimeout(400); await shot('04-dersler'); await rep('dersler');
     await p.click('[data-subj="anatomi"]:visible'); await p.waitForTimeout(500); await shot('05-ders-pencere', false); await rep('ders-pencere');
