@@ -1932,13 +1932,15 @@ function renderToday() {
       ${todays.length ? `<div class="entry-list">${todays.slice(0, 5).map(e => entryRow(e)).join("")}</div>`
         : `<div class="empty"><strong>Bugün henüz kayıt yok</strong></div>`}
     </div>`);
-  renderHeat(timed);
+  renderHeat(heatList());
 }
 // B1: takvim kişinin ilk gününden başlar; telefonda kutuya sığan hafta kadar gösterilir
-function renderHeat(timed) {
+// Takvim: kronometreli + elle girilen kayıtların hepsi (elle kısmı dokununca ayrıca yazılır)
+const heatList = () => [...myTimedAll(), ...manualAll()];
+function renderHeat(list) {
   const panel = $("heatPanel");
-  const byDay = {};
-  for (const e of timed) byDay[e.d] = (byDay[e.d] || 0) + e.m;
+  const byDay = {}, byMan = {};
+  for (const e of list) { byDay[e.d] = (byDay[e.d] || 0) + e.m; if (e.kind === "m") byMan[e.d] = (byMan[e.d] || 0) + e.m; }
   const tk = todayKey(), first = firstDayKey();
   const weeksSince = Math.round(daysBetween(mondayOf(first), mondayOf(tk)) / 7) + 1;
   const LABEL_W = window.innerWidth < 360 ? 34 : 74, GAP = 3;
@@ -1980,13 +1982,13 @@ function renderHeat(timed) {
   }
   setHTML(panel, `
     <div class="panel-head"><h2>${esc(title)}</h2><span class="small muted num">${esc(sub)}</span></div>
-    <div class="heat" role="img" aria-label="Günlük kronometreli çalışma yoğunluğu" style="grid-template-columns:${LABEL_W}px repeat(${shown}, ${cell}px)">${cellsHTML}</div>
-    <div class="readout" id="heatRead">${S.heatSel ? `<b>${esc(niceDay(S.heatSel))}</b> · ${esc(fmtMin(byDay[S.heatSel] || 0))}` : ""}</div>
+    <div class="heat" role="img" aria-label="Günlük çalışma yoğunluğu" style="grid-template-columns:${LABEL_W}px repeat(${shown}, ${cell}px)">${cellsHTML}</div>
+    <div class="readout" id="heatRead">${S.heatSel ? `<b>${esc(niceDay(S.heatSel))}</b> · ${esc(fmtMin(byDay[S.heatSel] || 0))}${byMan[S.heatSel] ? ` <span class="muted">(elle ${esc(fmtMin(byMan[S.heatSel]))})</span>` : ""}` : ""}</div>
     <div class="legend"><span>Az</span><span><i class="tdot" style="background:var(--surface-2)"></i>0</span><span><i class="tdot" style="background:color-mix(in srgb,var(--accent) 30%,var(--surface-2))"></i>&lt;30 dk</span><span><i class="tdot" style="background:color-mix(in srgb,var(--accent) 55%,var(--surface-2))"></i>&lt;1,5 sa</span><span><i class="tdot" style="background:color-mix(in srgb,var(--accent) 80%,var(--surface-2))"></i>&lt;3 sa</span><span><i class="tdot" style="background:var(--accent)"></i>3 sa+</span></div>`);
 }
 $("heatPanel").addEventListener("click", e => {
   const c = e.target.closest("i[data-k]"); if (!c) return;
-  S.heatSel = c.dataset.k; renderHeat(myTimedAll());                // çerçeve seçilen güne geçer
+  S.heatSel = c.dataset.k; renderHeat(heatList());                // çerçeve seçilen güne geçer
 });
 
 // ---------- Kayıt satırları ----------
@@ -2012,7 +2014,7 @@ function entryRow(e, own = true) {
 }
 function findMine(id) { return myTimedAll().find(x => x.id === id) || manualAll().find(x => x.id === id) || null; }
 document.addEventListener("click", e => {
-  if (S.heatSel && !e.target.closest("i[data-k]")) { S.heatSel = null; if (S.tab === "bugun") renderHeat(myTimedAll()); }   // başka yere dokununca bugüne döner
+  if (S.heatSel && !e.target.closest("i[data-k]")) { S.heatSel = null; if (S.tab === "bugun") renderHeat(heatList()); }   // başka yere dokununca bugüne döner
   const g = e.target.closest("[data-go]"); if (g) { go(g.dataset.go); return; }
   if (e.target.closest("[data-open='settings']")) { openSettings(); return; }
   const mn = e.target.closest("[data-menu]"); if (mn) { S.menuFor = mn.dataset.menu; S.confirmDel = null; render(); return; }
