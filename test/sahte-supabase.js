@@ -11,8 +11,8 @@ const PG = { host: '127.0.0.1', port: 5432, user: 'postgres', password: process.
 const DB = 'tdtest_e2e';
 const PK = { profiller: ['uid'], son_gunler: ['uid'], ozel_belgeler: ['uid', 'belge'] };
 const JSONB_SUTUN = new Set(['veri', 'son']);
-const JSONB_ARG = { td_profil_guncelle: ['p_yama'], td_ozel_guncelle: ['p_yama'], td_uyarilari_ayarla: ['p'] };
-const RPC_TABLO = { td_profil_guncelle: ['profiller'], td_ozel_guncelle: ['ozel_belgeler'], td_odalari_ayarla: ['oda_uyeleri'], td_kisi_cikar: ['profiller', 'son_gunler', 'oda_uyeleri'] };
+const JSONB_ARG = { td_profil_guncelle: ['p_yama'], td_ozel_guncelle: ['p_yama'], td_ozel_birlestir: ['p_yama'], td_uyarilari_ayarla: ['p'] };
+const RPC_TABLO = { td_profil_guncelle: ['profiller'], td_ozel_guncelle: ['ozel_belgeler'], td_ozel_birlestir: ['ozel_belgeler'], td_odalari_ayarla: ['oda_uyeleri'], td_kisi_cikar: ['profiller', 'son_gunler', 'oda_uyeleri'] };
 const AD = /^[a-z_][a-z0-9_]*$/;
 const TIP = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.css': 'text/css' };
 

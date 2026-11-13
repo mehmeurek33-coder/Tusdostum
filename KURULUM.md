@@ -114,6 +114,21 @@ update auth.users set encrypted_password = extensions.crypt('YENI_SIFRE', extens
 - **Gizli tutulacaklar:** Supabase `secret`/`service_role` anahtarı, veritabanı şifresi, `VAPID_OZEL`, `CRON_GIZLI`. Bunları GitHub'a ya da sohbete yazma. `config.js`'teki değerler gizli değildir.
 - **Çevrimdışı:** uygulama internetsiz açılır ama kayıt eklemek için bağlantı gerekir.
 
+## Kayıtların güvenliği ve yedekler
+
+- **Bağlantı koparsa:** kayıt önce telefonda saklanır, bağlantı gelince (uygulama kapatılıp açılsa bile) kendiliğinden sunucuya gider. Ekranda "N kayıt telefonda bekliyor" yazar.
+- **İki cihaz:** kayıtlar sunucuda her zaman birleştirilerek yazılır; iki cihaz aynı anda yazsa da hiçbir kayıt ezilmez.
+- **Gece yedeği:** sunucu her gece (00:17 UTC) bütün özel kayıtların bir kopyasını alır, son 14 günü tutar. Geri almak için SQL Editor'da:
+
+```sql
+-- Hangi günlerin yedeği var?
+select gun, count(*) from public.ozel_yedek group by gun order by gun desc;
+-- Bir kişinin kayıtlarını o günün yedeğiyle birleştir (mevcut kayıtlar silinmez, kaybolanlar geri gelir)
+select public.td_yedekten_geri_al((select id from auth.users where email = 'E_POSTA'), 'YYYY-AA-GG');
+```
+
+- **Kişisel yedek:** herkes **Ayarlar → Yedeği indir (JSON)** ile kendi kayıtlarını indirebilir; ayda bir indirmek iyi bir alışkanlıktır.
+
 ## Dosyalar
 
 | Dosya | Ne işe yarar |

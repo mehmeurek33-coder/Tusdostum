@@ -1455,6 +1455,13 @@ async function boot() {
   const A = window.TusAltyapi;
   if (!A || !A.hazir) { startLocal(); return; }
   A.odaKodu = roomCode;
+  A.yenidenEsitle = () => { if (S.mode === "cloud" && !readOnly()) { writeRoot({ timer: S.timer }); syncShared(true); } };
+  A.giden.degisince((olay, n) => {
+    if (olay.tur === "bekliyor") { S.gidenBekliyor = n; renderBanner(); }
+    else if (olay.tur === "gitti-gecikmeli") { S.gidenBekliyor = 0; renderBanner(); toast("Bekleyen kayıtlar kaydedildi."); }
+    else if (olay.tur === "gitti") { if (S.gidenBekliyor) { S.gidenBekliyor = 0; renderBanner(); } }
+    else if (olay.tur === "reddedildi") { S.gidenBekliyor = n; renderBanner(); toast("Bir kayıt sunucuya yazılamadı."); }
+  });
   A.kurtarmaOlunca(openNewPass);
   let ses = null;
   try { ses = await A.oturum(); } catch {}
@@ -1677,6 +1684,7 @@ function renderBanner() {
   if (S.loadTimeout && S.canWrite) msgs.push(esc("Kayıtlarına şu an ulaşılamıyor. Güvenlik için yeni kayıt geçici olarak kapalı; bağlantı gelince kendiliğinden açılır."));
   else if (S.stale) msgs.push(esc("Ortak veriye şu an ulaşılamıyor; gördüklerin güncel olmayabilir."));
   if (S.importOffer) msgs.push(`Bu cihazda hesabına aktarılmamış <b>${S.importOffer}</b> kayıt var (oturum açmadan girilmiş).<span class="row-btns"><button class="btn sm primary" type="button" data-import="yes">Hesabıma aktar</button><button class="btn sm" type="button" data-import="no">Aktarma</button></span>`);
+  if (S.gidenBekliyor) msgs.push(esc(`Bağlantı yok: ${S.gidenBekliyor} kayıt telefonda bekliyor, bağlantı gelince kendiliğinden kaydedilecek.`));
   const el = $("banner");
   setHTML(el, msgs.map(m => `<div class="banner">${m}</div>`).join(""));
   el.hidden = !msgs.length;

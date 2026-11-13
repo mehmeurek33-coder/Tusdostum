@@ -165,6 +165,13 @@ duzenli(r'  const c = window\.claude;\n  if \(!c \|\| typeof c\.use !== "functio
         r"""  const A = window.TusAltyapi;
   if (!A || !A.hazir) { startLocal(); return; }
   A.odaKodu = roomCode;
+  A.yenidenEsitle = () => { if (S.mode === "cloud" && !readOnly()) { writeRoot({ timer: S.timer }); syncShared(true); } };
+  A.giden.degisince((olay, n) => {
+    if (olay.tur === "bekliyor") { S.gidenBekliyor = n; renderBanner(); }
+    else if (olay.tur === "gitti-gecikmeli") { S.gidenBekliyor = 0; renderBanner(); toast("Bekleyen kayıtlar kaydedildi."); }
+    else if (olay.tur === "gitti") { if (S.gidenBekliyor) { S.gidenBekliyor = 0; renderBanner(); } }
+    else if (olay.tur === "reddedildi") { S.gidenBekliyor = n; renderBanner(); toast("Bir kayıt sunucuya yazılamadı."); }
+  });
   A.kurtarmaOlunca(openNewPass);
   let ses = null;
   try { ses = await A.oturum(); } catch {}
@@ -195,6 +202,9 @@ duzenli(r'  if \(S\.mode === "local"\) msgs\.push\(esc\("Yerel moddasın:[^\n]*\
         '  if (S.mode === "local") msgs.push(esc("Sunucu ayarı yapılmamış: kayıtların sadece bu tarayıcıda tutuluyor."));\n', "yerel afiş", flags=0)
 duzenli(r'  if \(S\.mode === "cloud" && !S\.canWrite\) msgs\.push\(esc\("Bu sayfayı sadece[^\n]*\n',
         '  if (S.mode === "cloud" && !S.canWrite) msgs.push(esc("Hesabın bu uygulamada kapatılmış; kayıt ekleyemezsin."));\n', "izin afişi", flags=0)
+
+degis('  const el = $("banner");\n  setHTML(el, msgs',
+      '  if (S.gidenBekliyor) msgs.push(esc(`Bağlantı yok: ${S.gidenBekliyor} kayıt telefonda bekliyor, bağlantı gelince kendiliğinden kaydedilecek.`));\n  const el = $("banner");\n  setHTML(el, msgs', "bekleyen afişi")
 
 # ---------- Kronometre kartı: zil ve çalışma uyarısı ----------
 degis("  const longBreak = breakOver(t);\n  S.lastBreakOver = longBreak;",

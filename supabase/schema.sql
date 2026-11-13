@@ -177,6 +177,20 @@ begin
   return r;   -- satır yoksa (ya da yazma izni yoksa) null
 end $$;
 
+-- Kayıt yazmanın TEK yolu: belge yoksa oluşturur, varsa iç içe birleştirir. Asla üzerine yazmaz;
+-- iki cihaz aynı anda aynı belgeye (ör. ayın ilk kaydı) yazsa da iki kayıt da kalır.
+create or replace function public.td_ozel_birlestir(p_belge text, p_yama jsonb) returns jsonb
+language plpgsql security invoker set search_path = public as $$
+declare r jsonb;
+begin
+  if auth.uid() is null then raise exception 'giriş gerekli'; end if;
+  if p_yama is null or jsonb_typeof(p_yama) <> 'object' then raise exception 'geçersiz yama'; end if;
+  insert into ozel_belgeler as o (uid, belge, veri) values (auth.uid(), p_belge, td_birlestir('{}'::jsonb, p_yama))
+    on conflict (uid, belge) do update set veri = td_birlestir(o.veri, excluded.veri)
+    returning veri into r;
+  return r;
+end $$;
+
 create or replace function public.td_ozel_guncelle(p_belge text, p_yama jsonb) returns jsonb
 language plpgsql security invoker set search_path = public as $$
 declare r jsonb;
@@ -291,6 +305,40 @@ language sql security definer set search_path = public as $$
   delete from push_abonelikleri where endpoint = any (p_endpointler)
 $$;
 
+-- ---------- Günlük yedek ----------
+-- Her gece özel kayıtların bir kopyası alınır; son 14 gün tutulur. Yalnızca sunucu (SQL Editor) okur.
+create table if not exists public.ozel_yedek (
+  gun date not null,
+  uid uuid not null,
+  belge text not null,
+  veri jsonb not null,
+  primary key (gun, uid, belge)
+);
+alter table public.ozel_yedek enable row level security;
+create or replace function public.td_gunluk_yedek() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  insert into ozel_yedek (gun, uid, belge, veri)
+    select current_date, uid, belge, veri from ozel_belgeler
+    on conflict (gun, uid, belge) do update set veri = excluded.veri;
+  get diagnostics n = row_count;
+  delete from ozel_yedek where gun < current_date - 14;
+  return n;
+end $$;
+-- Bir kişinin kayıtlarını belirli bir günün yedeğinden geri getirir (yalnızca SQL Editor'dan, elle).
+-- Var olan kayıtlar silinmez: yedekteki kayıtlar mevcut belgelerle birleştirilir.
+create or replace function public.td_yedekten_geri_al(p_uid uuid, p_gun date) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  insert into ozel_belgeler as o (uid, belge, veri)
+    select uid, belge, veri from ozel_yedek where uid = p_uid and gun = p_gun and belge <> 'kronometre'
+    on conflict (uid, belge) do update set veri = td_birlestir(excluded.veri, o.veri);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
 -- ---------- İzinler ----------
 grant usage on schema public to authenticated, service_role;
 grant select, insert, update, delete on public.profiller, public.son_gunler, public.ozel_belgeler to authenticated;
@@ -298,6 +346,10 @@ grant select on public.oda_uyeleri, public.odalarim, public.push_abonelikleri, p
 grant all on all tables in schema public to service_role;
 
 revoke all on function public.td_vadesi_gelenler() from public, anon, authenticated;
+revoke all on function public.td_gunluk_yedek(), public.td_yedekten_geri_al(uuid, date) from public, anon, authenticated;
+grant execute on function public.td_gunluk_yedek(), public.td_yedekten_geri_al(uuid, date) to service_role;
+revoke all on function public.td_ozel_birlestir(text, jsonb) from public, anon;
+grant execute on function public.td_ozel_birlestir(text, jsonb) to authenticated, service_role;
 revoke all on function public.td_olu_abonelikleri_sil(text[]) from public, anon, authenticated;
 grant execute on function public.td_vadesi_gelenler() to service_role;
 grant execute on function public.td_olu_abonelikleri_sil(text[]) to service_role;

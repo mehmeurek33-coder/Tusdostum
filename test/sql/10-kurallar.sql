@@ -117,6 +117,33 @@ set role authenticated; set request.jwt.claim.sub = :A;
 select td_uyarilari_ayarla('[]'::jsonb) is null;
 select tdt.yaz('Boş liste bekleyen uyarıları siler', (select count(*) from uyarilar where uid = :A) = 0);
 
+-- ===== Birleştirerek yazma (asla üzerine yazmaz) =====
+set role authenticated; set request.jwt.claim.sub = :A;
+select td_ozel_birlestir('elle-2026-01', '{"entries":{"x1":{"m":10}}}') is not null;
+select td_ozel_birlestir('elle-2026-01', '{"entries":{"x2":{"m":20}}}') is not null;
+select tdt.yaz('Birleştir: belge yoksa oluşturur, varsa iki kayıt da kalır',
+  (select veri from ozel_belgeler where uid = :A and belge = 'elle-2026-01') = '{"entries":{"x1":{"m":10},"x2":{"m":20}}}'::jsonb);
+select tdt.yaz('Birleştir: geçersiz yama reddedilir', tdt.reddedilir($$select td_ozel_birlestir('elle-2026-01', '[1]')$$));
+set request.jwt.claim.sub = :C;
+select td_ozel_birlestir('elle-2026-01', '{"entries":{"c1":{"m":5}}}') is not null;
+select tdt.yaz('Birleştir: başkasının belgesine dokunamaz (kendi belgesini oluşturur)',
+  (select count(*) from ozel_belgeler where belge = 'elle-2026-01' and uid = :A and veri::text like '%c1%') = 0);
+-- ===== Günlük yedek =====
+reset request.jwt.claim.sub; set role service_role;
+select tdt.yaz('Günlük yedek alınıyor', td_gunluk_yedek() >= 3);
+reset role;
+create or replace function tdt.bos_ya_da_yasak(q text) returns boolean language plpgsql as $f$
+declare n int; begin execute q into n; return n = 0; exception when others then return true; end $f$;
+set role authenticated; set request.jwt.claim.sub = :A;
+select tdt.yaz('Kullanıcı yedek tablosunu okuyamaz', tdt.bos_ya_da_yasak('select count(*) from ozel_yedek'));
+select tdt.yaz('Kullanıcı yedekten geri alma işlevini çağıramaz', tdt.reddedilir($$select td_yedekten_geri_al('11111111-1111-1111-1111-111111111111', current_date)$$));
+select td_ozel_birlestir('elle-2026-01', '{"entries":{"x1":null}}') is not null;
+reset request.jwt.claim.sub; set role service_role;
+select td_yedekten_geri_al('11111111-1111-1111-1111-111111111111', current_date) is not null;
+select tdt.yaz('Yedekten geri alma: kaybolan kayıt döner, sonradan eklenen kalır',
+  (select (veri #> '{entries,x1,m}')::int = 10 and (veri #> '{entries,x2,m}')::int = 20 from ozel_belgeler where uid = '11111111-1111-1111-1111-111111111111' and belge = 'elle-2026-01'));
+set role authenticated; set request.jwt.claim.sub = :A;
+
 -- ===== Boyut sınırı =====
 select tdt.yaz('Aşırı büyük profil reddedilir',
   tdt.reddedilir($$update profiller set veri = jsonb_build_object('x', (select string_agg(md5(i::text), '') from generate_series(1, 4000) i)) where uid = auth.uid()$$));

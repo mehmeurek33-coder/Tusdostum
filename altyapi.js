@@ -50,6 +50,7 @@
     const ses = data && data.session;
     if (!ses || !ses.user) return null;
     uid = ses.user.id; eposta = ses.user.email || "";
+    gidenYukle();
     return { id: uid, eposta };
   }
   const TR_HATA = [
@@ -130,10 +131,88 @@
   }
   const anlik = (ids, oku, hazirMi) => ({
     docs: ids.map(id => ({ id, exists: true, data: () => kopya(oku(id)) })),
-    metadata: { fromCache: !hazirMi, hasPendingWrites: bekleyen > 0 },
+    metadata: { fromCache: !hazirMi, hasPendingWrites: bekleyen > 0 || giden.length > 0 },
   });
   const ortakAnlik = () => anlik([...prof.keys()], kokBelge, ortakHazir());
-  const ozelAnlik = () => anlik([...ozel.keys()], id => ozel.get(id), ozelHazir());
+  // ---------- Gönderim kuyruğu ----------
+  // Özel kayıtlara yazılan her şey önce telefona (localStorage) yazılır, sunucu onaylayınca kuyruktan çıkar.
+  // Bağlantı koparsa kayıt kaybolmaz: bağlantı gelince (uygulama kapatılıp açılsa bile) sırayla gönderilir.
+  // Ekranda her zaman "sunucudaki veri + bekleyen yazmalar" gösterilir.
+  let giden = [], gonderiliyor = false, gidenT = null, gidenBekle = 0;
+  const gidenDinleyen = [];
+  const gKey = () => "td.giden." + uid;
+  function gidenKaydet() { try { localStorage.setItem(gKey(), JSON.stringify(giden)); return true; } catch { return false; } }
+  function gidenYukle() { try { const v = JSON.parse(localStorage.getItem(gKey()) || "[]"); giden = Array.isArray(v) ? v.filter(o => o && o.belge && o.tur) : []; } catch { giden = []; } }
+  function gidenHaber(olay) { gidenDinleyen.forEach(f => { try { f(olay, giden.length); } catch {} }); }
+  // Bağlantı ve geçici sunucu hataları yeniden denenir; diğerleri (izin, boyut, geçersiz veri) denenmez
+  const gecici = e => !e || !e.code || /fetch|network|load failed|timed? ?out|aborted/i.test(String(e.message || "")) || /^(08|53|57|40|PGRST00)/.test(String(e.code));
+  function gorunen(belge) {
+    let v = ozel.has(belge) ? ozel.get(belge) : undefined;
+    for (const o of giden) {
+      if (o.belge !== belge) continue;
+      if (o.tur === "yaz") v = kopya(o.veri);
+      else if (o.tur === "birlestir") v = birlestir(v === undefined ? {} : v, o.veri);
+      else if (o.tur === "sil") v = undefined;
+    }
+    return v;
+  }
+  function gidenEkle(op) {
+    if (op.tur !== "birlestir") {                                   // tüm belgeyi değiştiren yazma, öncekileri gereksiz kılar
+      const ilk = gonderiliyor ? 1 : 0;
+      giden = giden.filter((o, i) => i < ilk || o.belge !== op.belge);
+    }
+    giden.push({ ...op, z: Date.now() });
+    gidenKaydet();
+    yay("ozel");
+    gonder();
+  }
+  async function gonderBir(op) {
+    if (op.tur === "birlestir") return sb.rpc("td_ozel_birlestir", { p_belge: op.belge, p_yama: op.veri });
+    if (op.tur === "yaz") return sb.from("ozel_belgeler").upsert({ uid, belge: op.belge, veri: op.veri });
+    return sb.from("ozel_belgeler").delete().eq("uid", uid).eq("belge", op.belge);
+  }
+  async function gonder() {
+    if (gonderiliyor || !sb || !uid || !giden.length) return;
+    gonderiliyor = true; clearTimeout(gidenT);
+    let takildi = false, gitti = 0;
+    try {
+      while (giden.length) {
+        const op = giden[0];
+        let res;
+        try { res = await gonderBir(op); } catch (e) { res = { error: { message: String((e && e.message) || e) } }; }
+        if (res.error) {
+          if (gecici(res.error)) { takildi = true; break; }
+          giden.shift(); gidenKaydet();                             // kalıcı hata: bu yazma bir daha denenmez
+          try { const r = JSON.parse(localStorage.getItem("td.reddedilen." + uid) || "[]"); r.push({ ...op, hata: String(res.error.message || "") }); localStorage.setItem("td.reddedilen." + uid, JSON.stringify(r.slice(-50))); } catch {}
+          gidenHaber({ tur: "reddedildi", hata: cevir(res.error) });
+          continue;
+        }
+        if (op.tur === "birlestir" && res.data && typeof res.data === "object") ozel.set(op.belge, res.data);
+        else if (op.tur === "yaz") ozel.set(op.belge, kopya(op.veri));
+        else if (op.tur === "sil") ozel.delete(op.belge);
+        giden.shift(); gidenKaydet(); gitti++;
+      }
+    } finally {
+      gonderiliyor = false;
+      yay("ozel");
+      if (takildi) {
+        gidenBekle = Math.min(gidenBekle ? gidenBekle * 2 : 2000, 60000);
+        gidenT = setTimeout(gonder, gidenBekle);
+        gidenHaber({ tur: "bekliyor" });
+      } else {
+        const onceBekliyordu = gidenBekle > 0;
+        gidenBekle = 0;
+        if (gitti) gidenHaber({ tur: onceBekliyordu ? "gitti-gecikmeli" : "gitti" });
+      }
+    }
+  }
+  window.addEventListener("online", () => { gidenBekle = 0; gonder(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) gonder(); });
+  const ozelAnlik = () => {
+    const ids = new Set([...ozel.keys(), ...giden.map(o => o.belge)]);
+    const gor = new Map(); for (const id of ids) { const v = gorunen(id); if (v !== undefined) gor.set(id, v); }
+    return anlik([...gor.keys()], id => gor.get(id), ozelHazir());
+  };
   let yayT = { ortak: 0, ozel: 0 };
   function yay(hangi) {
     clearTimeout(yayT[hangi]);
@@ -166,9 +245,7 @@
     else if (tablo === "odalarim") {
       if (!bekleyenYol.odalar) { const r = rows[0] || {}; odalarim = { etiketler: r.etiketler || [], anahtarlar: r.anahtarlar || [], ozetler: r.ozetler || [] }; }
     } else {
-      const eski = new Map(ozel);
       ozel.clear(); rows.forEach(r => ozel.set(r.belge, r.veri || {}));
-      for (const [k, v] of eski) if (bekleyenYol[`data/users/${uid}/${k}`]) ozel.set(k, v);
     }
     yuklendi.add(tablo);
     yay(tablo === "ozel_belgeler" ? "ozel" : "ortak");
@@ -184,6 +261,7 @@
     if (basladi || !sb || !uid) return;
     basladi = true;
     hepsiniCek();
+    gonder();                                                       // önceki açılıştan kalan bekleyen kayıtlar
     kanal = sb.channel("td-veri-" + uid)
       .on("postgres_changes", { event: "*", schema: "public", table: "profiller" }, p => {
         const r = p.eventType === "DELETE" ? p.old : p.new;
@@ -203,21 +281,30 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "ozel_belgeler", filter: "uid=eq." + uid }, p => {
         const r = p.eventType === "DELETE" ? p.old : p.new;
         if (!r || !r.belge) { cekSonra("ozel_belgeler"); return; }
-        if (bekleyenYol[`data/users/${uid}/${r.belge}`]) return;
         if (p.eventType === "DELETE") ozel.delete(r.belge); else ozel.set(r.belge, r.veri || {});
         yay("ozel");
       })
       .subscribe(durum => { if (durum === "SUBSCRIBED" && yuklendi.size) hepsiniCek(); });   // yeniden bağlanınca kaçanları al
     // Arka plandan dönünce ve aralıklarla tazele (telefonlarda canlı bağlantı sık kopar)
     document.addEventListener("visibilitychange", () => { if (!document.hidden) hepsiniCek(); });
-    window.addEventListener("online", hepsiniCek);
+    const yenidenEsitle = () => { if (esitlenecek && api.yenidenEsitle) { esitlenecek = false; try { api.yenidenEsitle(); } catch {} } };
+    window.addEventListener("online", () => { hepsiniCek(); setTimeout(yenidenEsitle, 1500); });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(yenidenEsitle, 1500); });
+    setInterval(yenidenEsitle, 30000);
     setInterval(() => { if (!document.hidden) ["profiller", "son_gunler", "oda_uyeleri"].forEach(t => cekSonra(t, 0)); }, 90000);
   }
 
+  let esitlenecek = false;
   async function yaz(yol, iyimser, is) {
     bekleyen++; bekleyenYol[yol] = (bekleyenYol[yol] || 0) + 1;
     const hangi = yol.startsWith("data/") ? "ozel" : "ortak";
     try { iyimser(); yay(hangi); return await is(); }
+    catch (e) {
+      // Ortak profil (ad, bugünkü süre, canlı kronometre kopyası) özel kayıtlardan yeniden üretilebilir:
+      // bağlantı hatasında kullanıcıyı uyarma, bağlantı gelince uygulama yeniden gönderir.
+      if (yol.startsWith("logs/") && e && e.code === "unavailable") { esitlenecek = true; return; }
+      throw e;
+    }
     finally {
       bekleyen = Math.max(0, bekleyen - 1);
       bekleyenYol[yol]--; if (bekleyenYol[yol] <= 0) delete bekleyenYol[yol];
@@ -288,30 +375,12 @@
     };
   }
   function ozelRef(belge) {
-    const yol = `data/users/${uid}/${belge}`;
     return {
-      async get() { const v = ozel.get(belge); return { id: belge, exists: v !== undefined, data: () => kopya(v) }; },
-      async set(body) {
-        return yaz(yol, () => ozel.set(belge, kopya(body)), async () => {
-          const { error } = await sb.from("ozel_belgeler").upsert({ uid, belge, veri: body });
-          if (error) throw cevir(error);
-        });
-      },
-      async update(patch) {
-        if (ozelHazir() && !ozel.has(belge)) throw hata("invalid_argument", "belge yok");
-        return yaz(yol, () => ozel.set(belge, birlestir(ozel.get(belge) || {}, patch)), async () => {
-          const { data, error } = await sb.rpc("td_ozel_guncelle", { p_belge: belge, p_yama: patch });
-          if (error) throw cevir(error);
-          if (data === null) { ozel.delete(belge); throw hata("invalid_argument", "belge yok"); }
-          if (bekleyenYol[yol] <= 1) ozel.set(belge, data);
-        });
-      },
-      async delete() {
-        return yaz(yol, () => ozel.delete(belge), async () => {
-          const { error } = await sb.from("ozel_belgeler").delete().eq("uid", uid).eq("belge", belge);
-          if (error) throw cevir(error);
-        });
-      },
+      async get() { const v = gorunen(belge); return { id: belge, exists: v !== undefined, data: () => kopya(v) }; },
+      // Yazmalar kuyruğa girer ve hemen döner: kayıt telefonda güvende, sunucuya sırayla gider
+      async set(body) { gidenEkle({ tur: "yaz", belge, veri: kopya(body) }); },
+      async update(patch) { gidenEkle({ tur: "birlestir", belge, veri: kopya(patch) }); },   // belge yoksa oluşturulur
+      async delete() { gidenEkle({ tur: "sil", belge }); },
     };
   }
   const bos = { async get() { return { exists: false, data: () => undefined }; }, async set() {}, async update() {}, async delete() {} };
@@ -473,6 +542,12 @@
     kurtarmaOlunca(f) { kurtarmaDinleyen.push(f); },
     indirme: downloads,
     odaKodu: null,                                                  // uygulama açılışta kendi oda kodu işlevini buraya bağlar
+    yenidenEsitle: null,                                            // uygulama: bağlantı gelince ortak profili yeniden gönderir
+    giden: {
+      sayi: () => giden.length,
+      degisince(f) { gidenDinleyen.push(f); },
+      gonder: () => { gidenBekle = 0; gonder(); },
+    },
     // Bu anahtarda, benden başka en az bir üyesi olan bir oda var mı? (oda adları gizli olduğu için sunucu yanıtlar)
     async odaVarMi(anahtar) {
       const { data, error } = await sb.rpc("td_oda_var_mi", { p_anahtar: anahtar });
