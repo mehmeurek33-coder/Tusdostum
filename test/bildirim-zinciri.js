@@ -55,7 +55,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
     ok('Uyarı seçilince cihaz bildirim için kaydedildi', abone.length === 1 && abone[0].endpoint.endsWith('/push/telefon-1') && Buffer.from(abone[0].p256dh, 'base64url').length === 65 && Buffer.from(abone[0].auth, 'base64url').length === 16, JSON.stringify(abone));
     const sec = await p.evaluate(() => window.__aboneSecenek);
     ok('Kayıtta sunucunun açık anahtarı kullanıldı (65 bayt)', sec && sec.goruluyor === true && sec.anahtarBoy === 65, JSON.stringify(sec));
-    ok('Bildirim açıkken uyarı notu çıkmıyor', (await p.textContent('#alNote')).trim() === '');
+    ok('Bildirim açıkken pencerede "Bildirimler açık." yazıyor, düğme yok', (await p.textContent('#alNote')).trim() === 'Bildirimler açık.' && !(await p.$('#alPush')));
     await p.click('#alForm [data-close-modal]');
 
     // ---- Kronometre → mola → sunucuda uyarı ----

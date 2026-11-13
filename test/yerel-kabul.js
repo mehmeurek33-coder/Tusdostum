@@ -41,6 +41,7 @@ function seed14() {
   // ---------- 1) Masaüstü: istatistik tutarlılığı ----------
   {
     const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
+    await ctx.addInitScript(() => { Object.defineProperty(window, 'TUSDOSTUM_AYAR', { get: () => ({}), set: () => {}, configurable: false }); });   // yerel mod: gerçek sunucuya bağlanma
     const p = await ctx.newPage();
     p.on('pageerror', e => errs.push('1:' + e.message));
     const { kron, all } = seed14();
@@ -98,6 +99,7 @@ function seed14() {
   // ---------- 2) Telefon: yeni kullanıcı (3 gün), takvim, profil, gece yarısı, şerit, odak ----------
   {
     const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, colorScheme: 'dark' });
+    await ctx.addInitScript(() => { Object.defineProperty(window, 'TUSDOSTUM_AYAR', { get: () => ({}), set: () => {}, configurable: false }); });   // yerel mod: gerçek sunucuya bağlanma
     const p = await ctx.newPage();
     p.on('pageerror', e => errs.push('2:' + e.message));
     const kron = {};
@@ -158,6 +160,7 @@ function seed14() {
   // ---------- 3) Uzun geçmiş: takvim penceresi ----------
   for (const W of [1280, 390]) {
     const ctx = await b.newContext({ viewport: { width: W, height: 900 }, hasTouch: W < 500 });
+    await ctx.addInitScript(() => { Object.defineProperty(window, 'TUSDOSTUM_AYAR', { get: () => ({}), set: () => {}, configurable: false }); });   // yerel mod: gerçek sunucuya bağlanma
     const p = await ctx.newPage();
     p.on('pageerror', e => errs.push('3:' + e.message));
     const { kron } = seed14();

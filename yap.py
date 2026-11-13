@@ -50,6 +50,7 @@ html, body { margin: 0; }   /* Claude sayfa iskeleti bunu kendisi veriyordu */
 .head-r { display: inline-flex; align-items: center; gap: 8px; }
 .bell { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); padding: 0; }
 .bell svg { width: 20px; height: 20px; }
+.btn > svg { width: 18px; height: 18px; flex: none; }
 .bell.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; min-height: 44px; min-width: 52px; padding: 0 14px; font-weight: 600; font-size: 15px; color: var(--ink); }
@@ -86,6 +87,16 @@ function workAlert() {
 }
 // Ekran kapalıyken bildirim: sunucuya "şu saatte haber ver" listesi bırakılır
 const pushOn = () => { const A = window.TusAltyapi; return !!(A && S.mode === "cloud" && A.bildirim.acik()); };
+const pushState = () => { const A = window.TusAltyapi; return A && S.mode === "cloud" ? A.bildirim.durum() : "yok"; };
+// Bir dokunuşun içinden çağrılır: izin ister, cihazı kaydeder; açılırsa sessiz ses kaydı durur
+function enablePush(after) {
+  const A = window.TusAltyapi; if (!A || S.mode !== "cloud") return;
+  A.bildirim.ac().then(ok => {
+    if (ok) { stopBreakAudio(); toast("Bildirimler açık."); }
+    else toast(A.bildirim.izin() === "denied" ? "Bildirim izni verilmedi." : "Bildirimler açılamadı.");
+    syncAlerts(); renderTimerCard(); if (after) after();
+  });
+}
 function syncAlerts() {
   const A = window.TusAltyapi; if (!A || S.mode !== "cloud" || readOnly()) return;
   const t = S.timer, now = Date.now(), out = [];
@@ -103,30 +114,31 @@ function openAlerts() {
     `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}"${ro ? " disabled" : ""}>${v || "Kapalı"}</button>`).join("")}</div>`;
   const note = () => {
     if (!A || S.mode !== "cloud" || (!breakWarnMin() && !workWarnMin())) return "";
-    const b = A.bildirim;
-    if (b.acik()) return "";
-    if (b.anaEkranGerek()) return "Ekran kapalıyken bildirim için uygulamayı ana ekrana ekle.";
-    if (!b.destek()) return "Bu cihazda bildirim yok; uyarı uygulama açıkken çalar.";
-    if (b.izin() === "denied") return "Bildirim izni kapalı; telefon ayarlarından aç.";
-    return "";
+    const d = pushState();
+    if (d === "acik") return `<span class="hint">Bildirimler açık.</span>`;
+    if (d === "sor") return `<button class="btn primary" type="button" id="alPush">Bildirimleri aç</button>`;
+    if (d === "anaEkran") return `<span class="hint">Ekran kapalıyken bildirim için uygulamayı ana ekrana ekle ve oradan aç.</span>`;
+    if (d === "reddedildi") return `<span class="hint">Bildirim izni kapalı; telefon ayarlarından aç.</span>`;
+    return `<span class="hint">Bu cihazda bildirim yok; uyarı uygulama açıkken çalar.</span>`;
   };
   const body = `
     <div class="field">Mola uzayınca uyar (dk)${chips("breakWarn", BREAK_WARN_OPTS, breakWarnMin())}</div>
     <div class="field">Aralıksız çalışınca uyar (dk)${chips("workWarn", WORK_WARN_OPTS, workWarnMin())}</div>
-    <div class="hint" id="alNote">${esc(note())}</div>`;
+    <div id="alNote">${note()}</div>`;
   openModal(formShell("alForm", "alTitle", "Uyarılar", body, `<button class="btn primary" type="button" data-close-modal>Tamam</button>`));
   const f = $("alForm");
-  const redraw = () => { const n = $("alNote"); if (n) n.textContent = note(); };
+  const redraw = () => { const n = $("alNote"); if (n) n.innerHTML = note(); };
   f.addEventListener("submit", e => e.preventDefault());
   f.addEventListener("click", e => {
     if (e.target.closest("[data-close-modal]")) { closeModal(); return; }
+    if (e.target.closest("#alPush")) { enablePush(redraw); return; }
     const b = e.target.closest("[data-chips] button"); if (!b || readOnly()) return;
     const key = b.parentElement.dataset.chips, v = +b.dataset.v;
     writeSettings({ [key]: v });
     b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-checked", String(x === b)));
     if (v) {
       armSound();
-      if (A && S.mode === "cloud" && A.bildirim.destek() && !A.bildirim.acik()) A.bildirim.ac().then(() => { redraw(); syncAlerts(); });
+      if (pushState() === "sor") { enablePush(redraw); return; }
     }
     redraw(); syncAlerts(); renderTimerCard();
   });
@@ -169,6 +181,7 @@ async function bootCloud() {
   }
   if (db && S.me.id) startCloud(); else startLocal();
   if (room) { S.roomState = "on"; syncRooms(); } else S.roomState = "off";
+  A.bildirim.degisince(() => { if (pushOn()) stopBreakAudio(); renderTimerCard(); });
   A.bildirim.hazirla();
   if (A.kurtarmaMi()) openNewPass();
 """, "açılış")
@@ -183,15 +196,15 @@ duzenli(r'  if \(S\.mode === "cloud" && !S\.canWrite\) msgs\.push\(esc\("Bu sayf
 
 # ---------- Kronometre kartı: zil ve çalışma uyarısı ----------
 degis("  const longBreak = breakOver(t);\n  S.lastBreakOver = longBreak;",
-      "  const longBreak = breakOver(t);\n  S.lastBreakOver = longBreak;\n  const longRun = !over && workOver(t);\n  S.lastWorkOver = longRun;\n  const alertsOn = !!(breakWarnMin() || workWarnMin());", "kart durumu")
+      "  const longBreak = breakOver(t);\n  S.lastBreakOver = longBreak;\n  const longRun = !over && workOver(t);\n  S.lastWorkOver = longRun;\n  const alertsOn = !!(breakWarnMin() || workWarnMin());\n  const ps = alertsOn ? pushState() : \"yok\";", "kart durumu")
 degis('<div class="panel-head"><h2>Kronometre</h2>${pill}</div>',
       '<div class="panel-head"><h2>Kronometre</h2><span class="head-r"><button class="bell${alertsOn ? " on" : ""}" data-act="alerts" type="button" aria-label="Uyarılar" aria-pressed="${alertsOn}">${BELL_SVG}</button>${pill}</span></div>', "zil")
 degis('    ${longBreak ? `<div class="nudge">Molan ${breakWarnMin()} dakikayı geçti.</div>` : ""}',
-      '    ${longBreak ? `<div class="nudge">Molan ${breakWarnMin()} dakikayı geçti.</div>` : ""}\n    ${longRun ? `<div class="nudge">Aralıksız çalışman ${workWarnMin()} dakikayı geçti.</div>` : ""}', "çalışma uyarı satırı")
+      '    ${longBreak ? `<div class="nudge">Molan ${breakWarnMin()} dakikayı geçti.</div>` : ""}\n    ${longRun ? `<div class="nudge">Aralıksız çalışman ${workWarnMin()} dakikayı geçti.</div>` : ""}\n    ${ps === "sor" ? `<div class="tc-actions" style="margin-top:10px"><button class="btn sm" data-act="push-on" type="button">${BELL_SVG}Bildirimleri aç</button></div>` : ps === "anaEkran" ? `<div class="nudge">Ekran kapalıyken bildirim için ana ekrana ekle.</div>` : ""}', "çalışma uyarı satırı")
 degis("if ((runOverflow(t, now) > 0) !== S.lastOverflow || breakOver(t, now) !== S.lastBreakOver) renderTimerCard();",
       "if ((runOverflow(t, now) > 0) !== S.lastOverflow || breakOver(t, now) !== S.lastBreakOver || (runOverflow(t, now) <= 0 && workOver(t, now)) !== S.lastWorkOver) renderTimerCard();", "tik")
 degis('  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }',
-      '  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }\n  else if (a === "alerts") openAlerts();', "zil tıklama")
+      '  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }\n  else if (a === "alerts") openAlerts();\n  else if (a === "push-on") enablePush();', "zil tıklama")
 degis("  if (breakOver(S.timer)) breakAlert();", "  if (breakOver(S.timer)) breakAlert();\n  if (workOver(S.timer)) workAlert();", "aralık")
 
 degis("Erişimi sürüyorsa uygulamayı açınca yeniden görünür.", "Listelerden çıkar ve yeniden katılamaz.", "çıkarma metni")

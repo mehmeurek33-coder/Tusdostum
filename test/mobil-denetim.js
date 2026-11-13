@@ -62,6 +62,7 @@ async function audit(p, name) {
   const errs = [];
   for (const W of [390, 320]) {
     const ctx = await b.newContext({ viewport: { width: W, height: 780 }, deviceScaleFactor: 1, isMobile: false, hasTouch: true, colorScheme: 'dark' });
+    await ctx.addInitScript(() => { Object.defineProperty(window, 'TUSDOSTUM_AYAR', { get: () => ({}), set: () => {}, configurable: false }); });   // yerel mod: gerçek sunucuya bağlanma
     const p = await ctx.newPage();
     p.on('pageerror', e => errs.push(e.message));
     await p.goto(F);
@@ -95,6 +96,7 @@ async function audit(p, name) {
   }
   // yatay (landscape) telefon
   const ctx = await b.newContext({ viewport: { width: 780, height: 360 }, deviceScaleFactor: 1, isMobile: false, hasTouch: true });
+  await ctx.addInitScript(() => { Object.defineProperty(window, 'TUSDOSTUM_AYAR', { get: () => ({}), set: () => {}, configurable: false }); });   // yerel mod: gerçek sunucuya bağlanma
   const p = await ctx.newPage();
   await p.goto(F); await p.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, seed()]); await p.reload(); await p.waitForTimeout(600);
   await p.screenshot({ path: OUT + '12-yatay.png' });

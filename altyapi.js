@@ -403,7 +403,19 @@
   const bildirim = {
     destek() { return !!(sb && uid && dolu(cfg.vapidAcikAnahtar) && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window); },
     izin() { return "Notification" in window ? Notification.permission : "unsupported"; },
-    acik() { return this.destek() && Notification.permission === "granted"; },
+    kayitli: false,                                                 // bu cihaz sunucuya bildirim için kaydoldu mu
+    dinleyen: [],
+    degisince(f) { this.dinleyen.push(f); },
+    haber() { this.dinleyen.forEach(f => { try { f(); } catch {} }); },
+    acik() { return this.destek() && Notification.permission === "granted" && this.kayitli; },
+    // "acik" | "sor" (izin istenebilir) | "anaEkran" (iPhone: önce ana ekrana ekle) | "reddedildi" | "yok"
+    durum() {
+      if (this.acik()) return "acik";
+      if (this.anaEkranGerek()) return "anaEkran";
+      if (!this.destek()) return "yok";
+      if (Notification.permission === "denied") return "reddedildi";
+      return "sor";
+    },
     // iPhone'da bildirim yalnızca ana ekrana eklenmiş uygulamada çalışır
     anaEkranGerek() {
       const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -416,6 +428,7 @@
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(cfg.vapidAcikAnahtar.trim()) });
       const { error } = await sb.rpc("td_abonelik_kaydet", { p_endpoint: sub.endpoint, p_p256dh: b64u(sub.getKey("p256dh")), p_auth: b64u(sub.getKey("auth")) });
       if (error) throw cevir(error);
+      if (!this.kayitli) { this.kayitli = true; this.haber(); }
       return true;
     },
     // Bir dokunuşun içinden çağrılır; izin ister ve bu cihazı kaydeder
@@ -425,8 +438,9 @@
       if (izin !== "granted") return false;
       try { return await this.abone(); } catch { return false; }
     },
-    async hazirla() { if (this.acik()) { try { await this.abone(); } catch {} } },
+    async hazirla() { if (this.destek() && Notification.permission === "granted") { try { await this.abone(); } catch {} } },
     async kapat() {
+      this.kayitli = false;
       if (!("serviceWorker" in navigator)) return;
       const reg = await navigator.serviceWorker.getRegistration(); if (!reg) return;
       const sub = await reg.pushManager.getSubscription(); if (!sub) return;
