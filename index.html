@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="c059533cd7dc">
+<meta name="td-surum" content="df38268c813e">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -298,6 +298,19 @@ button.person, button.rank-row { width: 100%; background: none; border-left: 0; 
 .pill-row::-webkit-scrollbar { display: none; }
 .pill { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 0 14px; min-height: 40px; font-weight: 600; font-size: 14px; color: var(--muted); }
 .pill[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+/* Salon: odalar sekme, yanında oda ekleme (+); kur/katıl ayrı pencerede */
+.rtabs-wrap { display: flex; align-items: flex-end; gap: 8px; border-bottom: 1px solid var(--line); margin: -6px -4px 16px; padding: 0 4px; min-width: 0; }
+.rtabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+.rtabs::-webkit-scrollbar { display: none; }
+.rtabs button { flex: none; background: none; border: 0; border-bottom: 3px solid transparent; padding: 12px 12px 9px; font-weight: 600; font-size: 15px; color: var(--muted); min-height: 46px; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.rtabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.radd { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); background: var(--accent-soft); display: grid; place-items: center; margin-bottom: 4px; padding: 0; }
+.radd svg { width: 22px; height: 22px; }
+.rcard { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); text-align: left; color: var(--ink); width: 100%; min-height: 72px; }
+.rcard .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+.rcard .ic svg { width: 22px; height: 22px; }
+.rcard b { display: block; font-size: 16px; }
+.rcard .s { display: block; font-size: 13px; color: var(--muted); font-weight: 500; }
 .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; font-weight: 600; min-height: 44px; padding-block: 8px; cursor: pointer; }
 .check input { width: 24px; height: 24px; margin: 0; flex: none; accent-color: var(--accent); }
 .check .hint { font-weight: 500; display: block; }
@@ -2082,6 +2095,7 @@ document.addEventListener("click", e => {
   const dy = e.target.closest("[data-del-yes]");
   if (dy) { const en = findMine(dy.dataset.delYes); S.confirmDel = null; if (en && !readOnly()) deleteEntry(en); return; }
   if (e.target.closest("[data-invite]")) { openInvite(); return; }
+  if (e.target.closest("[data-room-plus]")) { openRoomChoice(); return; }
   if (e.target.closest("[data-room-new]")) { openRoomForm("new"); return; }
   if (e.target.closest("[data-room-join]")) { openRoomForm("join"); return; }
   const rb = e.target.closest("[data-room]"); if (rb) { setActiveRoom(rb.dataset.room); render(); return; }
@@ -2154,11 +2168,17 @@ function renderSalon() {
   }).join("");
   const studying = ppl.filter(p => p.pr.st === "calisiyor").length;
   const rooms = myRooms();
-  const pill = (k, l) => `<button class="pill" type="button" data-room="${esc(k)}" aria-pressed="${k === rc}">${esc(l)}</button>`;
-  const switcher = rooms.length ? `<div class="pill-row" role="group" aria-label="Odalar" style="margin-bottom:12px">${pill(GENEL, "Genel")}${rooms.map(l => pill(roomCode(l), l)).join("")}</div>` : "";
-  const roomActs = S.mode === "cloud" && !readOnly() ? `<div class="tc-actions" style="justify-content:flex-start;margin:0 0 14px"><button class="btn sm" type="button" data-room-new>Oda kur</button><button class="btn sm" type="button" data-room-join>Odaya katıl</button></div>` : "";
-  setHTML($("onlinePanel"), `${switcher}${roomActs}<div class="panel-head"><h2>${rc === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</h2><span class="small muted num">${ppl.length} kişi · ${studying} çalışıyor</span></div>${online}
+  const tab = (k, l) => `<button type="button" data-room="${esc(k)}" aria-pressed="${k === rc}">${esc(l)}</button>`;
+  const canAdd = S.mode === "cloud" && !readOnly();
+  const switcher = rooms.length || canAdd ? `<div class="rtabs-wrap"><div class="rtabs" role="group" aria-label="Odalar">${tab(GENEL, "Genel")}${rooms.map(l => tab(roomCode(l), l)).join("")}</div>
+    ${canAdd ? `<button class="radd" type="button" data-room-plus aria-label="Oda kur ya da odaya katıl">${ICON_PLUS}</button>` : ""}</div>` : "";
+  const changed = setHTML($("onlinePanel"), `${switcher}<div class="panel-head"><h2>${rc === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</h2><span class="small muted num">${ppl.length} kişi · ${studying} çalışıyor</span></div>${online}
     ${S.mode === "cloud" && !readOnly() ? `<div class="tc-actions" style="justify-content:flex-start"><button class="btn sm" type="button" data-invite>Arkadaş davet et</button></div>` : ""}`);
+  if (changed && S.lastRoomTab !== rc) {                               // seçili oda sekmesi görünür olsun (çok oda varsa)
+    S.lastRoomTab = rc;
+    const a = $("onlinePanel").querySelector('.rtabs [aria-pressed="true"]'), bar = a && a.parentElement;
+    if (a && bar && (a.offsetLeft < bar.scrollLeft || a.offsetLeft + a.offsetWidth > bar.scrollLeft + bar.clientWidth)) bar.scrollLeft = a.offsetLeft - 8;
+  }
 
   const rows = ppl.filter(p => S.roots[p.key] || p.key === me).map(p => {
     const id = p.key, a = agg(dayTimed(id));
@@ -2867,7 +2887,25 @@ function openJoin(inv) {
     if (inv && roomCode(inv) !== GENEL) toast(`${lab} odasındasın.`);
   });
 }
-// Salon'daki "Oda kur" / "Odaya katıl": kurarken ad boşta olmalı, katılırken oda var olmalı
+const ICON_PLUS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+const ICON_JOIN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l4-4-4-4M14 12H4"/></svg>`;
+// Salon'daki + düğmesi: "Oda kur" ya da "Odaya katıl"
+function openRoomChoice() {
+  if (readOnly()) return;
+  const full = myRooms().length >= MAX_ROOMS;
+  openModal(formShell("roomChoice", "roomChoiceTitle", "Oda", `
+    <button class="rcard" type="button" data-room-new><span class="ic">${ICON_PLUS}</span><span><b>Oda kur</b><span class="s">Yeni bir oda aç, arkadaşlarını davet et</span></span></button>
+    <button class="rcard" type="button" data-room-join><span class="ic">${ICON_JOIN}</span><span><b>Odaya katıl</b><span class="s">Adını bildiğin bir odaya gir</span></span></button>
+    ${full ? `<span class="hint">En çok ${MAX_ROOMS} odada olabilirsin; yenisi için Ayarlar'dan birinden çık.</span>` : ""}`, `<button class="btn" type="button" data-close-modal>Vazgeç</button>`));
+  const f = $("roomChoice");
+  f.addEventListener("submit", e => e.preventDefault());
+  f.addEventListener("click", e => {
+    if (e.target.closest("[data-close-modal]")) { closeModal(); return; }
+    const n = e.target.closest("[data-room-new]"), j = e.target.closest("[data-room-join]");
+    if (n || j) { e.stopPropagation(); closeModal(); openRoomForm(n ? "new" : "join"); }
+  });
+}
+// "Oda kur" / "Odaya katıl": kurarken ad boşta olmalı, katılırken oda var olmalı
 function openRoomForm(mode) {
   if (readOnly()) return;
   const isNew = mode === "new";

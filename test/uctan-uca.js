@@ -58,7 +58,7 @@ const gun = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${p
     await bekle(700);
     // Salon: "Oda kur" / "Odaya katıl". Pencereyi açar, adı yazar, gönderir; hata yazısını ya da '' döndürür
     const odaDene = async (p, tur, ad) => {
-      await p.click(tur === 'kur' ? '[data-room-new]' : '[data-room-join]'); await p.waitForSelector('#roomForm');
+      await p.click('[data-room-plus]'); await p.waitForSelector('#roomChoice'); await p.click(tur === 'kur' ? '#roomChoice [data-room-new]' : '#roomChoice [data-room-join]'); await p.waitForSelector('#roomForm');
       await p.fill('#rName', ad); await p.click('#roomForm button[type=submit]');
       for (let i = 0; i < 25; i++) { await bekle(120); if (!(await p.$('#roomForm')) || (await p.textContent('#rErr')).trim()) break; }
       const acik = !!(await p.$('#roomForm'));

@@ -43,7 +43,7 @@ const TIP = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; char
     await p.evaluate(() => { location.hash = 'salon'; }); await bekle(1200);
   };
   const odaDene = async (p, tur, ad) => {
-    await p.click(tur === 'kur' ? '[data-room-new]' : '[data-room-join]'); await p.waitForSelector('#roomForm');
+    await p.click('[data-room-plus]'); await p.waitForSelector('#roomChoice'); await p.click(tur === 'kur' ? '#roomChoice [data-room-new]' : '#roomChoice [data-room-join]'); await p.waitForSelector('#roomForm');
     await p.fill('#rName', ad); await p.click('#roomForm button[type=submit]');
     for (let i = 0; i < 40; i++) { await bekle(150); if (!(await p.$('#roomForm')) || (await p.textContent('#rErr')).trim()) break; }
     const acik = !!(await p.$('#roomForm')), h = acik ? (await p.textContent('#rErr')).trim() : '';
