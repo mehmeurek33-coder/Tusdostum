@@ -156,12 +156,12 @@ degis('if (code === "invalid_argument") { S.canWrite = false; toast("Bu sayfada 
 
 degis("  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();\n  scheduleTick();\n}\nfunction startTimer() {",
       "  syncAlerts();\n  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();\n  scheduleTick();\n}\nfunction startTimer() {", "setTimer")
-degis("workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  requestWake();",
-      "workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  if (workWarnMin()) armSound();\n  requestWake();", "başlat")
-degis("if (breakWarnMin()) { armSound(); startBreakAudio(); requestWake(); }",
-      "if (breakWarnMin()) { armSound(); if (!pushOn()) startBreakAudio(); requestWake(); }", "mola sesi")
-degis("breakStart: null, runStart: now, bn: num(t.bn) + 1 });\n  requestWake();",
-      "breakStart: null, runStart: now, bn: num(t.bn) + 1 });\n  if (workWarnMin()) armSound();\n  requestWake();", "dön")
+degis("workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  kilitBaslat();\n  requestWake();",
+      "workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  kilitBaslat();\n  if (workWarnMin()) armSound();\n  requestWake();", "başlat")
+degis("if (breakWarnMin()) { armSound(); if (!kilitSes) startBreakAudio(); requestWake(); }",
+      "if (breakWarnMin()) { armSound(); if (!kilitSes && !pushOn()) startBreakAudio(); requestWake(); }", "mola sesi")
+degis("breakStart: null, runStart: now, bn: num(t.bn) + 1 });\n  kilitBaslat();\n  requestWake();",
+      "breakStart: null, runStart: now, bn: num(t.bn) + 1 });\n  kilitBaslat();\n  if (workWarnMin()) armSound();\n  requestWake();", "dön")
 
 # ---------- Açılış: oturum → bulut ----------
 duzenli(r'  const c = window\.claude;\n  if \(!c \|\| typeof c\.use !== "function"\) \{ startLocal\(\); return; \}\n.*?  if \(room\) \{ S\.roomState = "on"; syncRooms\(\); \} else S\.roomState = "off";\n',
@@ -195,6 +195,8 @@ async function bootCloud() {
   if (room) { S.roomState = "on"; syncRooms(); } else S.roomState = "off";
   A.bildirim.degisince(() => { if (pushOn()) stopBreakAudio(); renderTimerCard(); });
   A.bildirim.hazirla();
+  try { if (sessionStorage.getItem("td.guncellendi")) { sessionStorage.removeItem("td.guncellendi"); setTimeout(() => toast("Uygulama güncellendi."), 600); } } catch {}
+  setTimeout(guncellemeyiDene, 4000);
   if (A.kurtarmaMi()) openNewPass();
 """, "açılış")
 degis('function startLocal() {\n  S.mode = "local";', 'function startLocal() {\n  S.mode = "local";\n  if (!downloads) downloads = (window.TusAltyapi && window.TusAltyapi.indirme) || null;', "yerel")
@@ -257,7 +259,20 @@ degis('writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "", breakWarn: BR
       'writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "" });\n', "ayar kaydı")
 
 # ---------- Yedekten yükleme, giriş ekranı, yeni şifre ----------
-SON = r"""const standalone = () => { try { return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch { return false; } };
+SON = r"""// Yeni sürüm yalnızca GÜVENLİ anda devreye girer: kronometre durmuşken, pencere açık değilken,
+// gönderilmeyi bekleyen kayıt yokken ve uygulama öndeyken (açılışta ya da yeniden öne gelince).
+function guncellemeyiDene() {
+  const A = window.TusAltyapi; if (!A || !A.guncelleme || !A.guncelleme.bekliyor() || document.hidden) return;
+  const acik = ["modalOverlay", "sheetOverlay", "profileOverlay"].some(id => !$(id).hidden);
+  if (S.timer || acik || (A.giden && A.giden.sayi()) || pendingWrites) return;
+  try { sessionStorage.setItem("td.guncellendi", "1"); } catch {}
+  A.guncelleme.uygula();
+}
+document.addEventListener("visibilitychange", () => {
+  const A = window.TusAltyapi; if (document.hidden || !A || !A.guncelleme) return;
+  A.guncelleme.denetle(); setTimeout(guncellemeyiDene, 2500);
+});
+const standalone = () => { try { return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch { return false; } };
 
 // ---------- Yedekten yükleme ----------
 // Var olan kayıtlara dokunmaz; yalnızca yedekte olup hesapta olmayanları ekler.
@@ -395,5 +410,19 @@ boot();
 degis("\nboot();\n})();", "\n" + SON, "son ekler")
 
 assert "claude.ai" not in s, "claude.ai kalıntısı var"
+
+# ---------- Sürüm damgası ----------
+# Bütün uygulama dosyalarının özeti: herhangi biri değişince yeni sürüm olur ve servis çalışanı onu tek parça indirir.
+import hashlib
+oz = hashlib.sha256(s.encode("utf-8"))
+for f in ["config.js", "altyapi.js", "vendor/supabase.js", "manifest.webmanifest"]:
+    oz.update((BURASI / f).read_bytes())
+surum = oz.hexdigest()[:12]
+s = s.replace("<title>TusDostum</title>\n", f'<title>TusDostum</title>\n<meta name="td-surum" content="{surum}">\n', 1)
+sw = (BURASI / "sw.js").read_text(encoding="utf-8")
+sw2 = re.sub(r'const SURUM = "td-[^"]*";', f'const SURUM = "td-{surum}";', sw, count=1)
+assert sw2 != sw or f'td-{surum}' in sw, "sw.js sürüm satırı bulunamadı"
+(BURASI / "sw.js").write_text(sw2, encoding="utf-8")
+print("sürüm:", surum)
 HEDEF.write_text(s, encoding="utf-8")
 print(f"yazıldı: {HEDEF} ({len(s)} bayt)")

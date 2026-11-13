@@ -1,24 +1,33 @@
 // TusDostum · servis çalışanı: çevrimdışı kabuk + bildirimler
-const SURUM = "td-2";
+const SURUM = "td-c059533cd7dc";                                              // yap.py her derlemede dosyaların özetini yazar
 const KABUK = ["./", "index.html", "config.js", "altyapi.js", "vendor/supabase.js", "manifest.webmanifest",
-  "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
+  "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png", "icons/badge-96.png"];
 
+// Yeni sürüm bütün dosyalarıyla TEK PARÇA iner (biri bile inmezse kurulum olmaz, eski sürüm sürer).
+// Kendiliğinden devreye girmez: uygulama, kimse çalışmıyorken "etkinles" der (kronometre çalışırken asla).
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(SURUM).then(c => c.addAll(KABUK)).catch(() => {}).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SURUM).then(c => c.addAll(KABUK.map(u => new Request(u, { cache: "reload" })))));
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== SURUM).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith("td-") && k !== SURUM).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
+self.addEventListener("message", e => { if (e.data === "etkinles") self.skipWaiting(); });
 
-// Önce ağ (güncel sürüm hemen gelsin), ağ yoksa önbellek. Yazı tipleri önbellekten.
+// Uygulama dosyaları: her zaman bu sürümün önbelleğinden (açık sayfa ile dosyalar hep aynı sürüm).
+// Supabase istekleri ve diğer adresler olduğu gibi ağa gider. Yazı tipleri önbellekten.
+const kabukYolu = url => {
+  const kok = new URL("./", self.registration.scope).pathname;
+  if (!url.pathname.startsWith(kok)) return null;
+  const yol = url.pathname.slice(kok.length) || "index.html";
+  return KABUK.includes(yol) ? yol : null;
+};
 self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   const yaziTipi = url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
-  if (url.origin !== self.location.origin && !yaziTipi) return;     // Supabase istekleri olduğu gibi geçer
   if (yaziTipi) {
-    e.respondWith(caches.open(SURUM).then(async c => {
+    e.respondWith(caches.open("td-yazitipi").then(async c => {
       const hit = await c.match(req);
       if (hit) return hit;
       const res = await fetch(req);
@@ -27,17 +36,13 @@ self.addEventListener("fetch", e => {
     }));
     return;
   }
+  if (url.origin !== self.location.origin) return;
+  const yol = req.mode === "navigate" ? "index.html" : kabukYolu(url);
+  if (!yol) return;
   e.respondWith((async () => {
     const c = await caches.open(SURUM);
-    try {
-      const res = await fetch(req);
-      if (res && res.ok) c.put(req, res.clone());
-      return res;
-    } catch (err) {
-      const hit = (await c.match(req, { ignoreSearch: true })) || (req.mode === "navigate" ? await c.match("index.html") : null);
-      if (hit) return hit;
-      throw err;
-    }
+    const hit = await c.match(yol === "./" ? "index.html" : yol);
+    return hit || fetch(req);
   })());
 });
 

@@ -68,7 +68,7 @@
             on(tur, filtre, cb) { if (tur === "postgres_changes") k.degisim.push({ filtre, cb }); else if (tur === "presence") k.varlik.push(cb); return nesne; },
             subscribe(cb) {
               kanallar.add(k);
-              if (!basladi) { basladi = true; fetch("/api/events").then(r => r.json()).then(r => { sonOlay = r.n; setInterval(yokla, 200); }); }
+              if (!basladi) { basladi = true; const ilk = () => fetch("/api/events").then(r => r.json()).then(r => { sonOlay = r.n; setInterval(yokla, 200); }).catch(() => setTimeout(ilk, 1000)); ilk(); }
               setTimeout(() => cb && cb("SUBSCRIBED"), 0);
               return nesne;
             },

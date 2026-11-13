@@ -31,7 +31,7 @@ async function kur() {
 }
 
 // gercek: true → sayfa GERÇEK supabase-js ile çalışır; bu sunucu Auth / PostgREST / Realtime protokollerini konuşur
-async function baslat(port = 0, { vapid = '', gercek = false } = {}) {
+async function baslat(port = 0, { vapid = '', gercek = false, kok = KOK } = {}) {
   await kur();
   const pool = new Pool({ ...PG, database: DB, max: 8 });
   const hesaplar = new Map();          // eposta -> { id, sifre }
@@ -163,8 +163,8 @@ async function baslat(port = 0, { vapid = '', gercek = false } = {}) {
       if (yol === '/') yol = '/index.html';
       if (yol === '/vendor/supabase.js' && !gercek) { res.writeHead(200, { 'content-type': TIP['.js'], 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'sahte-istemci.js'))); }
       if (yol === '/config.js') { res.writeHead(200, { 'content-type': TIP['.js'], 'cache-control': 'no-store' }); return res.end(`window.TUSDOSTUM_AYAR = { supabaseUrl: location.origin, supabaseAnahtar: "test-acik-anahtar", vapidAcikAnahtar: ${JSON.stringify(vapid)}, google: false };`); }
-      const dosya = path.join(KOK, yol);
-      if (!dosya.startsWith(KOK) || !fs.existsSync(dosya) || fs.statSync(dosya).isDirectory()) { res.writeHead(404); return res.end('yok'); }
+      const dosya = path.join(kok, yol);
+      if (!dosya.startsWith(kok) || !fs.existsSync(dosya) || fs.statSync(dosya).isDirectory()) { res.writeHead(404); return res.end('yok'); }
       res.writeHead(200, { 'content-type': TIP[path.extname(dosya)] || 'application/octet-stream', 'cache-control': 'no-store' });
       res.end(fs.readFileSync(dosya));
     } catch (e) { json({ error: String(e && e.message) }, 500); }
@@ -174,6 +174,7 @@ async function baslat(port = 0, { vapid = '', gercek = false } = {}) {
   const adres = `http://localhost:${sunucu.address().port}`;
   return {
     adres, hesaplar, pushlar,
+    kokDegistir: d => { kok = path.resolve(d); },
     // testlerin doğrudan (yönetici olarak) veritabanına bakması için
     sql: async (q, p) => { const r = await pool.query(q, p); return r.rows; },
     olay,

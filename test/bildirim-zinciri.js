@@ -32,7 +32,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
     }
   }, [S.adres, alici.getPublicKey().toString('base64'), auth.toString('base64')]);
   const p = await ctx.newPage();
-  const hatalar = []; p.on('pageerror', e => hatalar.push(e.message));
+  const hatalar = []; p.on('pageerror', e => { hatalar.push(e.message); console.log('SAYFA HATASI', e.stack); });
   let deno = null;
   try {
     await p.goto(S.adres + '/');

@@ -129,6 +129,15 @@ select public.td_yedekten_geri_al((select id from auth.users where email = 'E_PO
 
 - **Kişisel yedek:** herkes **Ayarlar → Yedeği indir (JSON)** ile kendi kayıtlarını indirebilir; ayda bir indirmek iyi bir alışkanlıktır.
 
+## Güncelleme kuralları
+
+Uygulama güncellenirken kimsenin kaydı ve istatistiği değişmemeli; çalışan birinin uygulaması da kendiliğinden değişmemeli.
+
+- **Telefonda:** yeni sürüm arka planda bütün dosyalarıyla tek parça iner ve bekler. Kronometre çalışırken, bir pencere açıkken ya da gönderilmeyi bekleyen kayıt varken **asla** devreye girmez. Kimse çalışmıyorken, uygulama açılırken ya da yeniden öne gelince devreye girer ve "Uygulama güncellendi." yazar.
+- **Uygulama güncellemesinden önce:** `araclar/yayin-oncesi.sh <yayındaki_sürüm>` çalıştırılır. Yayındaki sürüm ile yeni sürüm aynı kayıtlarla açılıp istatistik, ders ayrıntısı, kayıtlar ve denemeler ekranları birebir karşılaştırılır; tek bir dakikalık fark bile güncellemeyi durdurur.
+- **Sunucu güncellemesinden önce:** `REF=<proje> araclar/sunucu-guncelle.sh` kullanılır. Önce yedek alır, kayıtların parmak izini çıkarır, şemayı uygular, parmak izi değiştiyse alarm verir.
+- Şema değişiklikleri yalnızca **ekleyici** olur (yeni sütun/işlev); var olan kayıtları dönüştüren bir değişiklik yapılmaz.
+
 ## Dosyalar
 
 | Dosya | Ne işe yarar |

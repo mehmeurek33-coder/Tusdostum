@@ -529,8 +529,20 @@
   };
 
   // ---------- Servis çalışanı (çevrimdışı kabuk + bildirim) ----------
+  // Güncelleme: yeni sürüm arka planda iner ve bekler; uygulama güvenli bir anda (kimse çalışmıyorken) devreye sokar
+  let swReg = null, yenileniyor = false;
+  const guncelleme = {
+    bekliyor: () => !!(swReg && swReg.waiting && navigator.serviceWorker.controller),
+    denetle: () => { if (swReg) swReg.update().catch(() => {}); },
+    uygula() {
+      const w = swReg && swReg.waiting; if (!w) return false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => { if (!yenileniyor) { yenileniyor = true; location.reload(); } });
+      w.postMessage("etkinles");
+      return true;
+    },
+  };
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").then(r => { swReg = r; }).catch(() => {}); });
   }
 
   const api = window.TusAltyapi = {
@@ -541,6 +553,7 @@
     kurtarmaMi: () => kurtarma,
     kurtarmaOlunca(f) { kurtarmaDinleyen.push(f); },
     indirme: downloads,
+    guncelleme,
     odaKodu: null,                                                  // uygulama açılışta kendi oda kodu işlevini buraya bağlar
     yenidenEsitle: null,                                            // uygulama: bağlantı gelince ortak profili yeniden gönderir
     giden: {

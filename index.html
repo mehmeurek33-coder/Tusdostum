@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
+<meta name="td-surum" content="c059533cd7dc">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -958,8 +959,8 @@ function beep() {
     });
   } catch {}
 }
-function makeAlarmWav(silenceSec) {
-  const rate = 8000, beepSec = 8, n = Math.floor((silenceSec + beepSec) * rate);
+function makeAlarmWav(silenceSec, beepSec = 8) {
+  const rate = 8000, n = Math.floor((silenceSec + beepSec) * rate);
   const buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer);
   const w = (o, str) => { for (let i = 0; i < str.length; i++) buf[o + i] = str.charCodeAt(i); };
   w(0, "RIFF"); dv.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
@@ -998,6 +999,55 @@ function startBreakAudio() {                                       // yalnızca 
 }
 // Süre aşılınca uyarı 5 dakikada bir tekrarlar (unutulmuş mola için en çok 3 saat)
 const ALERT_EVERY_MS = 5 * 60000, BREAK_ALERT_MAX_MS = 3 * 3600 * 1000;
+// ---------- Kilit ekranında sayaç (deneysel, cihaza özel) ----------
+// Sessiz bir ses kaydı döngüde çalınır; telefonun kilit ekranındaki "Şimdi Çalınan" alanında ders ve kronometre görünür.
+// Bedeli: açıkken başka uygulamada çalan müzik durur. Kronometreye dokunmaz; yalnızca gösterir.
+const kilitDestek = () => "mediaSession" in navigator && typeof MediaMetadata !== "undefined";
+const kilitAcik = () => !!PREF.kilitSayac && kilitDestek();
+let kilitSes = null, kilitSonBaslik = "";
+function kilitBilgi() {
+  const t = S.timer; if (!t || !SUBJ[t.s]) return null;
+  const sh = shownTimes(t, Date.now()), brk = onBreak(t);
+  return { brk, pos: (brk ? sh.brk : sh.work) / 1000, baslik: brk ? `Mola · ${SUBJ[t.s].n}` : `${SUBJ[t.s].n} · ${TSHORT[t.t]}` };
+}
+function kilitGuncelle() {
+  if (!kilitSes) return;
+  const k = kilitBilgi(); if (!k) { kilitDurdur(); return; }
+  try {
+    if (k.baslik !== kilitSonBaslik) {
+      kilitSonBaslik = k.baslik;
+      const ikon = (document.querySelector('link[rel="apple-touch-icon"]') || {}).href;
+      navigator.mediaSession.metadata = new MediaMetadata({ title: k.baslik, artist: "TusDostum", album: k.brk ? "Mola" : "Çalışma", artwork: ikon ? [{ src: ikon, sizes: "180x180", type: "image/png" }] : [] });
+    }
+    navigator.mediaSession.playbackState = "playing";
+    if (navigator.mediaSession.setPositionState) navigator.mediaSession.setPositionState({ duration: Math.max(k.pos + 60, 16 * 3600), position: k.pos, playbackRate: 1 });
+  } catch {}
+}
+function kilitBaslat() {                                            // yalnızca bir dokunuşun içinden çağrılır
+  if (!kilitAcik() || !S.timer) return;
+  stopBreakAudio();
+  if (!kilitSes) {
+    try {
+      const url = URL.createObjectURL(makeAlarmWav(10, 0));
+      const el = new Audio(); el.loop = true; el.preload = "auto"; el.src = url;
+      el.addEventListener("timeupdate", kilitGuncelle);
+      kilitSes = { el, url }; kilitSonBaslik = "";
+      try {
+        navigator.mediaSession.setActionHandler("pause", () => {});     // kilit ekranından duraklatma kronometreyi etkilemez
+        navigator.mediaSession.setActionHandler("play", () => { if (kilitSes) kilitSes.el.play().catch(() => {}); });
+      } catch {}
+    } catch { kilitSes = null; return; }
+  }
+  kilitSes.el.play().then(kilitGuncelle).catch(() => {});
+}
+function kilitDurdur() {
+  if (!kilitSes) return;
+  const s = kilitSes; kilitSes = null; kilitSonBaslik = "";
+  try { s.el.pause(); s.el.removeAttribute("src"); s.el.load(); URL.revokeObjectURL(s.url); } catch {}
+  try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = "none"; navigator.mediaSession.setActionHandler("pause", null); navigator.mediaSession.setActionHandler("play", null); } catch {}
+}
+// Kronometre sürerken uygulama yeniden açıldıysa ilk dokunuşta sayaç geri gelir (ses yalnızca dokunuşla başlatılabilir)
+document.addEventListener("click", () => { if (kilitAcik() && S.timer && !kilitSes) kilitBaslat(); }, true);
 function breakAlert() {
   const t = S.timer, w = breakWarnMin(); if (!t || !t.breakStart || !w) return;
   const over = curBreak(t) - w * 60000; if (over < 0 || over > BREAK_ALERT_MAX_MS) return;
@@ -1369,6 +1419,7 @@ function setTimer(t) {
   S.timer = t ? { ...t } : null;
   S.timerRev = Math.max(Date.now(), S.timerRev + 1);
   if (!onBreak(S.timer)) stopBreakAudio();
+  if (!S.timer) kilitDurdur(); else kilitGuncelle();
   if (S.mode === "local") writeRoot({ timer: S.timer });
   else if (S.mode === "cloud") { writeKronometre(); writeRoot({ timer: S.timer }); }
   syncAlerts();
@@ -1378,6 +1429,7 @@ function setTimer(t) {
 function startTimer() {
   const now = Date.now();
   setTimer({ s: S.pick.s, t: S.pick.t, st: now, runStart: now, workMs: 0, breakStart: null, breakMs: 0, bn: 0 });
+  kilitBaslat();
   if (workWarnMin()) armSound();
   requestWake();
 }
@@ -1385,12 +1437,14 @@ function pauseTimer() {
   const t = S.timer; if (!t || onBreak(t) || readOnly()) return;
   const now = Date.now();
   setTimer({ ...t, workMs: timerWork(t, now), breakMs: num(t.breakMs) + runOverflow(t, now), runStart: null, breakStart: now });
-  if (breakWarnMin()) { armSound(); if (!pushOn()) startBreakAudio(); requestWake(); }
+  kilitBaslat();
+  if (breakWarnMin()) { armSound(); if (!kilitSes && !pushOn()) startBreakAudio(); requestWake(); }
 }
 function resumeTimer() {
   const t = S.timer; if (!t || !onBreak(t) || readOnly()) return;
   const now = Date.now();
   setTimer({ ...t, breakMs: timerBreak(t, now), breakStart: null, runStart: now, bn: num(t.bn) + 1 });
+  kilitBaslat();
   if (workWarnMin()) armSound();
   requestWake();
 }
@@ -1490,6 +1544,8 @@ async function bootCloud() {
   if (room) { S.roomState = "on"; syncRooms(); } else S.roomState = "off";
   A.bildirim.degisince(() => { if (pushOn()) stopBreakAudio(); renderTimerCard(); });
   A.bildirim.hazirla();
+  try { if (sessionStorage.getItem("td.guncellendi")) { sessionStorage.removeItem("td.guncellendi"); setTimeout(() => toast("Uygulama güncellendi."), 600); } } catch {}
+  setTimeout(guncellemeyiDene, 4000);
   if (A.kurtarmaMi()) openNewPass();
   render(); renderTimerCard();
 }
@@ -2858,6 +2914,7 @@ function openSettings() {
       <label class="field">Günlük soru hedefi<input type="number" id="gQ" inputmode="numeric" min="10" max="3000" value="${g.q}"></label>
     </div>
     <label class="field">Sınav tarihi<input type="date" id="gE" value="${esc(g.exam)}"></label>
+    ${kilitDestek() ? `<label class="check"><input type="checkbox" id="gLock"${PREF.kilitSayac ? " checked" : ""}><span>Kilit ekranında sayaç <span class="hint">(deneysel · açıkken çalan müzik durur)</span></span></label>` : ""}
     ${downloads ? `<div class="howto"><span class="sec-title">Yedek</span>
       <span class="copyrow"><button class="btn sm" type="button" data-backup="json">Yedeği indir (JSON)</button><button class="btn sm" type="button" data-backup="csv">Kayıtları indir (CSV)</button><button class="btn sm" type="button" id="gRestore"${ro ? " disabled" : ""}>Yedekten yükle</button><input type="file" id="gFile" accept="application/json,.json" hidden></span></div>` : ""}
     ${standalone() ? "" : `<div class="howto"><span class="sec-title">Ana ekrana ekle</span>
@@ -2893,6 +2950,7 @@ function openSettings() {
     if (ge && !isDateStr(ge)) { $("gErr").textContent = "Geçerli bir sınav tarihi seç."; return; }
     writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "" });
     const before = myRoomKeys().join("|");
+    if ($("gLock")) { PREF.kilitSayac = $("gLock").checked; savePref(); if (PREF.kilitSayac) kilitBaslat(); else kilitDurdur(); }
     writeRoot({ nick: ($("gNick").value || "").trim().slice(0, 24), av: avSel });
     const rooms = saveRooms(roomList);
     const roomsChanged = rooms.map(roomCode).join("|") !== before;
@@ -3002,6 +3060,19 @@ document.addEventListener("wheel", e => { if (e.ctrlKey) e.preventDefault(); }, 
   document.addEventListener("touchcancel", end);
 })();
 
+// Yeni sürüm yalnızca GÜVENLİ anda devreye girer: kronometre durmuşken, pencere açık değilken,
+// gönderilmeyi bekleyen kayıt yokken ve uygulama öndeyken (açılışta ya da yeniden öne gelince).
+function guncellemeyiDene() {
+  const A = window.TusAltyapi; if (!A || !A.guncelleme || !A.guncelleme.bekliyor() || document.hidden) return;
+  const acik = ["modalOverlay", "sheetOverlay", "profileOverlay"].some(id => !$(id).hidden);
+  if (S.timer || acik || (A.giden && A.giden.sayi()) || pendingWrites) return;
+  try { sessionStorage.setItem("td.guncellendi", "1"); } catch {}
+  A.guncelleme.uygula();
+}
+document.addEventListener("visibilitychange", () => {
+  const A = window.TusAltyapi; if (document.hidden || !A || !A.guncelleme) return;
+  A.guncelleme.denetle(); setTimeout(guncellemeyiDene, 2500);
+});
 const standalone = () => { try { return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch { return false; } };
 
 // ---------- Yedekten yükleme ----------
