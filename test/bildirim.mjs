@@ -77,9 +77,9 @@ const giden = istekler.find(x => x.url === abone.endpoint);
 const h = giden && giden.secenek.headers;
 ok('Bildirim isteği başlıkları (aes128gcm, TTL, VAPID)', !!h && h['Content-Encoding'] === 'aes128gcm' && h.TTL === '600' && /^vapid t=/.test(h.Authorization), JSON.stringify(h));
 const ileti = giden ? JSON.parse(coz(giden.secenek.body)) : {};
-ok('Telefona giden ileti: başlık, metin, etiket', ileti.baslik === '⏰ Mola bitti!' && ileti.govde === 'Molan 10 dakikayı geçti. Çalışmaya dön.' && ileti.etiket === 'td-mola-0', JSON.stringify(ileti));
+ok('Telefona giden ileti: yalnızca başlık, etiket', ileti.baslik === '⏰ Mola bitti!' && ileti.govde === '' && ileti.etiket === 'td-mola-0', JSON.stringify(ileti));
 const { METIN } = await import(pathToFileURL(gecici).href);
-ok('Tekrarlarda geçen süre büyüyor (5, 8, 11 dk)', [0, 1, 2].map(i => METIN.mola(5, i).govde).join('|') === 'Molan 5 dakikayı geçti. Çalışmaya dön.|Molan 8 dakikayı geçti. Çalışmaya dön.|Molan 11 dakikayı geçti. Çalışmaya dön.');
+ok('Bütün bildirimler tek satır başlık, açıklama yok', ['mola', 'calisma', 'sinir'].every(t => METIN[t](5, 1).govde === '') && METIN.calisma(45).baslik === '☕ Mola zamanı' && METIN.sinir().baslik === '⚠️ 3 saat doldu');
 const sil = istekler.find(x => x.url.endsWith('td_olu_abonelikleri_sil'));
 ok('Yalnızca 404/410 dönen abonelik siliniyor (500 dönen kalıyor)', sil && JSON.stringify(JSON.parse(sil.secenek.body).p_endpointler) === JSON.stringify(['https://push.ornek.dev/gonder/olu']), sil && sil.secenek.body);
 

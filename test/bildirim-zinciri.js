@@ -83,7 +83,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
     ok('Gönderilen uyarı 3 dk sonrası için tekrar kuruldu, hemen ikinci kez gitmiyor', tekrar.length === 1 && tekrar[0].sira === 1 && tekrar[0].kalan === 1 && tekrar[0].sn > 160 && tekrar[0].sn <= 181 && (await cagir()).gonderilen === 0, JSON.stringify(tekrar));
     let ileti = null;
     try { ileti = ece.decrypt(S.pushlar[0].govde, { version: 'aes128gcm', privateKey: alici, authSecret: auth }).toString('utf8'); } catch (e) { ileti = 'HATA ' + e.message; }
-    ok('Telefon iletiyi kendi anahtarıyla çözebiliyor', /Molan 5 dakikayı geçti/.test(ileti), ileti);
+    ok('Telefon iletiyi kendi anahtarıyla çözebiliyor', /Mola bitti/.test(ileti), ileti);
 
     await S.sql(`update push_abonelikleri set endpoint = 'https://bildirim.ornek.invalid/push/telefon-1' where uid = $1`, [uid]);   // taklit adresi geri al
 
@@ -97,7 +97,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
       await cdp.send('ServiceWorker.deliverPushMessage', { origin: S.adres, registrationId: kayitNo, data: ileti });
       for (let i = 0; i < 20 && !bildirimler.length; i++) { await bekle(200); bildirimler = await p.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).map(n => ({ baslik: n.title, govde: n.body, etiket: n.tag }))); }
     }
-    ok('Ekranda bildirim: "⏰ Mola bitti! — Molan 5 dakikayı geçti. Çalışmaya dön."', bildirimler.length === 1 && bildirimler[0].baslik === '⏰ Mola bitti!' && bildirimler[0].govde === 'Molan 5 dakikayı geçti. Çalışmaya dön.' && bildirimler[0].etiket === 'td-mola-0', JSON.stringify({ kayitNo, bildirimler }));
+    ok('Ekranda bildirim: yalnızca "⏰ Mola bitti!"', bildirimler.length === 1 && bildirimler[0].baslik === '⏰ Mola bitti!' && bildirimler[0].govde === '' && bildirimler[0].etiket === 'td-mola-0', JSON.stringify({ kayitNo, bildirimler }));
 
     // ---- Çalışmaya dönünce kalan tekrarlar iptal ----
     await p.click('[data-act="resume"]'); await bekle(900);

@@ -74,11 +74,11 @@ export async function pushGonder(abone, metin, vapid, fetchFn = fetch) {
   return { durum: r.status, oldu: r.status >= 200 && r.status < 300, olu: r.status === 404 || r.status === 410 };
 }
 
-// Tekrarlarda geçen süre büyür: dk + sira × 3
+// Yalnızca başlık: kısa ve tek satır (iPhone altına kendisi "from TusDostum" ekler)
 export const METIN = {
-  mola: (dk, sira = 0) => ({ baslik: "⏰ Mola bitti!", govde: `Molan ${dk + sira * 3} dakikayı geçti. Çalışmaya dön.` }),
-  calisma: (dk, sira = 0) => ({ baslik: "☕ Mola zamanı", govde: `${dk + sira * 3} dakikadır aralıksız çalışıyorsun.` }),
-  sinir: () => ({ baslik: "⚠️ 3 saat doldu", govde: "3 saattir aralıksız çalışıyorsun. Devam ediyor musun?" }),
+  mola: () => ({ baslik: "⏰ Mola bitti!", govde: "" }),
+  calisma: () => ({ baslik: "☕ Mola zamanı", govde: "" }),
+  sinir: () => ({ baslik: "⚠️ 3 saat doldu", govde: "" }),
 };
 
 // Vakti gelen uyarıları al, gönder, ölü abonelikleri temizle
