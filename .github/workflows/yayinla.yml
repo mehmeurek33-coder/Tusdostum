@@ -22,6 +22,12 @@ jobs:
       url: ${{ steps.yayin.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Sürüm damgaları aynı mı (değilse telefonlar yeni sürümü almaz)
+        run: |
+          sw=$(grep -o 'SURUM = "td-[0-9a-f]*"' sw.js | sed 's/.*td-//; s/"//')
+          sayfa=$(grep -o 'name="td-surum" content="[0-9a-f]*"' index.html | sed 's/.*content="//; s/"//')
+          echo "sw.js: $sw  index.html: $sayfa"
+          if [ -z "$sw" ] || [ "$sw" != "$sayfa" ]; then echo "::error::sw.js ile index.html sürümü farklı; yap.py çıktısının tamamı gönderilmeli"; exit 1; fi
       - name: Yalnızca uygulama dosyalarını ayır
         run: |
           mkdir _site
