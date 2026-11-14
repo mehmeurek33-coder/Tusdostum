@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="fe5e94bfd027">
+<meta name="td-surum" content="153e73aa3fbf">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -1618,7 +1618,7 @@ async function boot() {
   A.kurtarmaOlunca(openNewPass);
   let ses = null;
   try { ses = await A.oturum(); } catch {}
-  try { const h = sessionStorage.getItem("td.davet"); if (h) { sessionStorage.removeItem("td.davet"); if (!location.hash.startsWith("#oda-")) location.hash = h; } } catch {}
+  try { const h = sessionStorage.getItem("td.davet"); if (h) { sessionStorage.removeItem("td.davet"); if (!location.hash.startsWith("#oda-")) { try { history.replaceState(null, "", h); hashDegisti(); } catch { location.hash = h; } } } } catch {}
   if (!ses) { openAuth(); return; }
   await bootCloud();
 }
@@ -1796,14 +1796,21 @@ function readHash() {
   else if (TABS.includes(h)) { S.tab = h; S.openSubject = null; }
   else if (h.startsWith("oda-")) { const lab = decRoom(h.slice(4)); if (lab) S.invite = lab; }
 }
-window.addEventListener("hashchange", () => {
+function hashDegisti() {
   const prevTab = S.tab;
   readHash();
   if (prevTab !== S.tab) { S.menuFor = null; S.confirmDel = null; try { window.scrollTo(0, 0); } catch {} }
   render();
   maybeOnboard();
-});
-function go(hash) { if (location.hash !== "#" + hash) location.hash = hash; else { readHash(); render(); } }
+}
+window.addEventListener("hashchange", hashDegisti);
+// Sekmeler tarayıcı geçmişine yazılmaz: iPhone'da ekranın en solundan çekmek (tarayıcının "geri" hareketi)
+// önceki sekmeye atlamasın; kaydırma her yerde uygulamanın kendi sekme geçişi olsun.
+function go(hash) {
+  if (location.hash === "#" + hash) { readHash(); render(); return; }
+  try { history.replaceState(null, "", "#" + hash); } catch { location.hash = hash; return; }
+  hashDegisti();
+}
 
 // ---------- Çizim iskeleti ----------
 function render() {

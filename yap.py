@@ -178,7 +178,7 @@ duzenli(r'  const c = window\.claude;\n  if \(!c \|\| typeof c\.use !== "functio
   A.kurtarmaOlunca(openNewPass);
   let ses = null;
   try { ses = await A.oturum(); } catch {}
-  try { const h = sessionStorage.getItem("td.davet"); if (h) { sessionStorage.removeItem("td.davet"); if (!location.hash.startsWith("#oda-")) location.hash = h; } } catch {}
+  try { const h = sessionStorage.getItem("td.davet"); if (h) { sessionStorage.removeItem("td.davet"); if (!location.hash.startsWith("#oda-")) { try { history.replaceState(null, "", h); hashDegisti(); } catch { location.hash = h; } } } } catch {}
   if (!ses) { openAuth(); return; }
   await bootCloud();
 }
