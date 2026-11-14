@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="c805e44f565c">
+<meta name="td-surum" content="0298a71fd2a3">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -2537,11 +2537,11 @@ function renderProfile() {
   }
   const todayM = (son[tk] ? son[tk].m : 0) + live;
   if (live && !(son[tk] && son[tk].m)) worked++;
-  // Ortalama ve çalışılan gün, kişinin başladığı günden itibaren (en çok son 10 gün) hesaplanır.
-  // Bugün henüz çalışılmadıysa bugün ortalamaya katılmaz (gün bitmedi).
+  // Ortalama ve çalışılan gün, kişinin başladığı günden itibaren (en çok son 10 gün) hesaplanır;
+  // çalışılmayan günler (bugün dahil) ortalamaya katılır.
   const bas = startKeyOf(uid, son), ilk = days[0];
   const pencere = bas && bas > ilk ? Math.max(1, daysBetween(bas, tk) + 1) : SHARE_DAYS;
-  const ortGun = todayM > 0 || pencere === 1 ? pencere : pencere - 1;
+  const ortGun = pencere;
   const p = ppl.find(x => x.key === uid);
   let status = "Çevrimdışı";
   if (p) {

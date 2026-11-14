@@ -1,5 +1,5 @@
 // Profil: günlük ortalama ve çalışılan gün, kişinin başladığı günden itibaren (en çok 10 gün) hesaplanır;
-// bugün henüz çalışılmadıysa bugün ortalamaya katılmaz.
+// çalışılmayan günler (bugün dahil) ortalamaya katılır.
 // Çalıştırma: NODE_PATH=$(npm root -g) node test/profil-ortalama.js
 const { chromium } = require('playwright');
 const path = require('path');
@@ -40,13 +40,13 @@ const sonGun = (n, m) => ({ d: k(n), t: [m, 0, 0, 0], s: { patoloji: [m, 0, 0, 0
     return r;
   };
   let r = await profil('u_z');
-  ok('Dün başlayan (dün 2 sa 39 dk, bugün 0): ortalama 2 sa 39 dk, çalışılan gün 1/2', r['Günlük ortalama'] === '2 sa 39 dk' && r['Çalışılan gün'] === '1/2', JSON.stringify(r));
+  ok('Dün başlayan (dün 2 sa 39 dk, bugün 0): ortalama 159/2 = 1 sa 20 dk, çalışılan gün 1/2', r['Günlük ortalama'] === '1 sa 20 dk' && r['Çalışılan gün'] === '1/2', JSON.stringify(r));
   r = await profil('u_e');
-  ok('Uzun süredir kullanan (10 günde 300 dk, bugün 0): ortalama 300/9 = 33 dk, çalışılan gün 3/10', r['Günlük ortalama'] === '33 dk' && r['Çalışılan gün'] === '3/10', JSON.stringify(r));
+  ok('Uzun süredir kullanan (10 günde 300 dk, bugün 0): ortalama 300/10 = 30 dk, çalışılan gün 3/10', r['Günlük ortalama'] === '30 dk' && r['Çalışılan gün'] === '3/10', JSON.stringify(r));
   r = await profil('u_b');
   ok('3 gün önce başlayan, bugün de çalışmış (120 dk, 4 gün): ortalama 30 dk, çalışılan gün 2/4', r['Günlük ortalama'] === '30 dk' && r['Çalışılan gün'] === '2/4', JSON.stringify(r));
   r = await profil('u_y');
-  ok('Yedekten eski kayıt aktarmış: başlangıç en eski kayıt (6 gün önce) → 120/6 = 20 dk, 2/7', r['Günlük ortalama'] === '20 dk' && r['Çalışılan gün'] === '2/7', JSON.stringify(r));
+  ok('Yedekten eski kayıt aktarmış: başlangıç en eski kayıt (6 gün önce) → 120/7 = 17 dk, 2/7', r['Günlük ortalama'] === '17 dk' && r['Çalışılan gün'] === '2/7', JSON.stringify(r));
   ok('Sayfa hatası yok', !hatalar.length, hatalar.join(' | '));
   console.log(out.join('\n'));
   await b.close();
