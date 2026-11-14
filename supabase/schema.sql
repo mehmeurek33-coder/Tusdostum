@@ -468,6 +468,29 @@ language sql security definer set search_path = public as $$
   from d join push_abonelikleri a on a.uid = d.alici left join profiller p on p.uid = d.gonderen
 $$;
 
+-- ---------- Haftalık özet ----------
+-- Pazar akşamı tek bildirim: bu hafta (Pzt–Paz) kronometreyle çalışılan süre ve geçen haftayla farkı.
+-- Yalnızca bildirimi açık ve bu hafta çalışmış kişilere gider. Kayıtlara dokunmaz; yalnızca service_role çağırır.
+create or replace function public.td_haftalik_ozet() returns table (uid uuid, bu_hafta int, gecen_hafta int, endpoint text, p256dh text, auth text)
+language sql security definer set search_path = public as $$
+  with gun as (select td_bugun() as bugun, date_trunc('week', td_bugun()::timestamp)::date as pzt),
+  kayit as (
+    select o.uid, e.value ->> 'd' as d, least((e.value ->> 'm')::numeric, 960) as m
+    from gun, ozel_belgeler o,
+      jsonb_each(case when jsonb_typeof(o.veri -> 'entries') = 'object' then o.veri -> 'entries' else '{}'::jsonb end) e
+    where o.belge like 'kron-%' and o.belge >= 'kron-' || to_char(gun.pzt - 7, 'YYYY-MM')
+      and jsonb_typeof(e.value) = 'object' and not (e.value ? 'del')
+      and jsonb_typeof(e.value -> 'm') = 'number' and (e.value ->> 'm')::numeric > 0),
+  toplam as (
+    select k.uid,
+      coalesce(sum(k.m) filter (where k.d >= gun.pzt::text and k.d <= gun.bugun::text), 0)::int as bu,
+      coalesce(sum(k.m) filter (where k.d >= (gun.pzt - 7)::text and k.d < gun.pzt::text), 0)::int as gecen
+    from kayit k, gun group by k.uid)
+  select t.uid, t.bu, t.gecen, a.endpoint, a.p256dh, a.auth
+  from toplam t join push_abonelikleri a on a.uid = t.uid
+  where t.bu > 0 and not exists (select 1 from engelliler x where x.uid = t.uid)
+$$;
+
 -- ---------- Günlük yedek ----------
 -- Her gece özel kayıtların bir kopyası alınır; son 14 gün tutulur. Yalnızca sunucu (SQL Editor) okur.
 create table if not exists public.ozel_yedek (
@@ -511,8 +534,8 @@ grant all on all tables in schema public to service_role;
 
 revoke all on function public.td_vadesi_gelenler() from public, anon, authenticated;
 revoke all on function public.td_gunluk_yedek(), public.td_yedekten_geri_al(uuid, date) from public, anon, authenticated;
-revoke all on function public.td_bekleyen_etkilesimler(), public.td_bildirim_tetikle() from public, anon, authenticated;
-grant execute on function public.td_bekleyen_etkilesimler(), public.td_bildirim_tetikle() to service_role;
+revoke all on function public.td_bekleyen_etkilesimler(), public.td_bildirim_tetikle(), public.td_haftalik_ozet() from public, anon, authenticated;
+grant execute on function public.td_bekleyen_etkilesimler(), public.td_bildirim_tetikle(), public.td_haftalik_ozet() to service_role;
 revoke all on function public.td_etkilesim_gonder(uuid, text), public.td_etkilesim_durum(uuid), public.td_etkilesim_goruldu(bigint[]), public.td_hedef_tebrik() from public, anon;
 grant execute on function public.td_etkilesim_gonder(uuid, text), public.td_etkilesim_durum(uuid), public.td_etkilesim_goruldu(bigint[]), public.td_hedef_tebrik() to authenticated, service_role;
 grant select on public.etkilesimler, public.tebrik_ozet to authenticated;

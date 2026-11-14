@@ -17,6 +17,17 @@ select cron.schedule('tusdostum-uyari', '* * * * *', $cron$
      or exists (select 1 from public.etkilesimler where bildirim_bekliyor);
 $cron$);
 
+-- Haftalık özet: her Pazar 17:00 (Türkiye saati = 14:00 UTC) tek bildirim
+select cron.unschedule(jobid) from cron.job where jobname = 'tusdostum-haftalik';
+
+select cron.schedule('tusdostum-haftalik', '0 14 * * 0', $cron$
+  select net.http_post(
+    url := 'PROJE_ADRESI/functions/v1/uyari-gonder',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-gizli', 'CRON_GIZLI'),
+    body := '{"haftalik":true}'::jsonb,
+    timeout_milliseconds := 30000);
+$cron$);
+
 -- Denetim: son çalışmaları görmek için
 --   select status, return_message, start_time from cron.job_run_details order by start_time desc limit 10;
 -- Durdurmak için

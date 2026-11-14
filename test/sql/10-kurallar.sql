@@ -257,6 +257,26 @@ select tdt.yaz('5 saat tebriki kayıtlara dokunmaz', (select count(*) from jsonb
 select tdt.yaz('Uygulama tebriki elle eklenemez', tdt.reddedilir($$insert into etkilesimler (gonderen, alici, tur, oda, gun) values (null, '77777777-7777-7777-7777-777777777777', 'tebrik', '', td_bugun())$$));
 set role authenticated; set request.jwt.claim.sub = :A;
 
+-- ===== Haftalık özet =====
+set request.jwt.claim.sub = '66666666-6666-6666-6666-666666666666';
+select td_abonelik_kaydet('https://push.example/fatma', 'p256', 'auth') is null;
+select td_ozel_birlestir('kron-' || to_char(td_bugun(), 'YYYY-MM'), jsonb_build_object('entries', jsonb_build_object(
+  'w1', jsonb_build_object('d', date_trunc('week', td_bugun()::timestamp)::date::text, 'm', 120, 's', 'anatomi', 't', 'konu'),
+  'w2', jsonb_build_object('d', td_bugun()::text, 'm', 45, 's', 'anatomi', 't', 'konu'),
+  'w3', jsonb_build_object('d', td_bugun()::text, 'm', 500, 's', 'anatomi', 't', 'konu', 'del', 1)))) is not null;
+select td_ozel_birlestir('kron-' || to_char(date_trunc('week', td_bugun()::timestamp)::date - 3, 'YYYY-MM'), jsonb_build_object('entries', jsonb_build_object(
+  'g1', jsonb_build_object('d', (date_trunc('week', td_bugun()::timestamp)::date - 3)::text, 'm', 90, 's', 'anatomi', 't', 'konu'),
+  'g0', jsonb_build_object('d', (date_trunc('week', td_bugun()::timestamp)::date - 9)::text, 'm', 300, 's', 'anatomi', 't', 'konu')))) is not null;
+select td_ozel_birlestir('elle-' || to_char(td_bugun(), 'YYYY-MM'), jsonb_build_object('entries', jsonb_build_object(
+  'e1', jsonb_build_object('d', td_bugun()::text, 'm', 600, 's', 'anatomi', 't', 'konu')))) is not null;
+select tdt.yaz('Kullanıcı haftalık özeti çağıramaz', tdt.reddedilir($$select * from td_haftalik_ozet()$$));
+reset request.jwt.claim.sub; set role service_role;
+select tdt.yaz('Haftalık özet: bu hafta 165 dk (silinen ve elle girilen sayılmaz), geçen hafta 90 dk (iki hafta öncesi sayılmaz)',
+  (select bu_hafta = 165 and gecen_hafta = 90 and endpoint = 'https://push.example/fatma' from td_haftalik_ozet() where uid = '66666666-6666-6666-6666-666666666666'));
+select tdt.yaz('Haftalık özet: bu hafta çalışmayan ya da bildirimi kapalı kişi listede yok',
+  not exists (select 1 from td_haftalik_ozet() where uid = '44444444-4444-4444-4444-444444444444'));
+set role authenticated; set request.jwt.claim.sub = :A;
+
 -- ===== Boyut sınırı =====
 select tdt.yaz('Aşırı büyük profil reddedilir',
   tdt.reddedilir($$update profiller set veri = jsonb_build_object('x', (select string_agg(md5(i::text), '') from generate_series(1, 4000) i)) where uid = auth.uid()$$));

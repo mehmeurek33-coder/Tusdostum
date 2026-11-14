@@ -10,7 +10,7 @@ const BURASI = path.dirname(fileURLToPath(import.meta.url));
 const kaynak = fs.readFileSync(path.join(BURASI, '../supabase/functions/uyari-gonder/index.ts'), 'utf8').replace('(globalThis as any)', '(globalThis)');
 const gecici = path.join(os.tmpdir(), `td-uyari-${process.pid}.mjs`);
 fs.writeFileSync(gecici, kaynak);
-const { sifrele, vapidYetki, calistir, sunucuAnahtari, ETKILESIM_METIN } = await import(pathToFileURL(gecici).href);
+const { sifrele, vapidYetki, calistir, sunucuAnahtari, ETKILESIM_METIN, HAFTALIK_METIN, haftalik } = await import(pathToFileURL(gecici).href);
 
 const out = [];
 const ok = (ad, kosul, ek = '') => out.push(`${kosul ? 'GEÇTİ ' : 'KALDI '} ${ad}${!kosul && ek ? ' — ' + ek : ''}`);
@@ -106,6 +106,22 @@ ok('Kuyruk ilk denemede okunamayınca yeniden deneniyor ve bildirim gidiyor', de
 let deneme2 = 0, hata = '';
 try { await calistir({ url: 'https://p.supabase.co', anahtar: 'k', vapid }, async () => { deneme2++; return new Response('', { status: 555 }); }, 5); } catch (e) { hata = e.message; }
 ok('Üç denemede de okunamazsa hata bildiriliyor (uyarı kuyrukta kalır, sonraki dakika gider)', deneme2 === 3 && /kuyruk okunamadı \(555\)/.test(hata), `${deneme2} ${hata}`);
+// Haftalık özet
+ok('Haftalık özet metinleri (fazla / az / aynı / ilk hafta)',
+  HAFTALIK_METIN(1930, 1690) === '📊 Bu hafta 32 sa 10 dk · geçen haftadan 4 sa fazla' &&
+  HAFTALIK_METIN(600, 725) === '📊 Bu hafta 10 sa · geçen haftadan 2 sa 5 dk az' &&
+  HAFTALIK_METIN(600, 605) === '📊 Bu hafta 10 sa · geçen haftayla aynı' &&
+  HAFTALIK_METIN(45, 0) === '📊 Bu hafta 45 dk çalıştın', [HAFTALIK_METIN(1930, 1690), HAFTALIK_METIN(600, 725), HAFTALIK_METIN(600, 605), HAFTALIK_METIN(45, 0)].join(' | '));
+const ist4 = [];
+const hf = async (url, sec) => { ist4.push({ url, sec });
+  if (url.endsWith('td_haftalik_ozet')) return new Response(JSON.stringify([{ uid: 'u1', bu_hafta: 1930, gecen_hafta: 1690, ...abone }, { uid: 'u2', bu_hafta: 300, gecen_hafta: 0, ...abone, endpoint: 'https://push.ornek.dev/gonder/iki' }]), { status: 200 });
+  return new Response('', { status: 201 }); };
+const s4 = await haftalik({ url: 'https://p.supabase.co', anahtar: 'k', vapid }, hf);
+const il4 = JSON.parse(coz(ist4.find(x => x.url === abone.endpoint).sec.body));
+ok('Haftalık özet herkese bir bildirim: yalnızca başlık, tek etiket', s4.gonderilen === 2 && il4.baslik === '📊 Bu hafta 32 sa 10 dk · geçen haftadan 4 sa fazla' && il4.govde === '' && il4.etiket === 'td-hafta', JSON.stringify([s4, il4]));
+ist4.length = 0;
+const s5 = await haftalik({ url: 'https://p.supabase.co', anahtar: 'k', vapid }, hf, 'u2');
+ok('Deneme: yalnızca seçilen kişiye gidiyor', s5.gonderilen === 1 && ist4.filter(x => x.url.includes('push.ornek.dev')).length === 1 && ist4.some(x => x.url.endsWith('/iki')), JSON.stringify(s5));
 fs.unlinkSync(gecici);
 console.log(out.join('\n'));
 console.log(`\n${out.filter(x => x.startsWith('GEÇTİ')).length} geçti, ${out.filter(x => x.startsWith('KALDI')).length} kaldı`);

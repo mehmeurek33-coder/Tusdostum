@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="2d65d2d35839">
+<meta name="td-surum" content="c12bfe3cb5b3">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -277,6 +277,9 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 .kd:disabled { opacity: .45; }
 .kd.done, .kd.done:disabled { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); opacity: 1; }
 .kd-hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: -6px; }
+.kd-edenler { display: flex; gap: 10px; align-items: baseline; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 15px; }
+.kd-edenler .l { font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.kd-edenler .a { min-width: 0; overflow-wrap: anywhere; }
 /* Dürtme kartı kronometre çerçevesinin üst kısmında, üstüne biner: kronometre yerinden oynamaz */
 .tc-sarma { position: relative; display: flex; flex-direction: column; min-width: 0; }
 .tc-sarma > .timer-card { flex: 1; }
@@ -2345,7 +2348,7 @@ document.addEventListener("click", e => { if (!e.target.closest("[data-hedef-aya
 // ---------- Tebrik ve dürtme (yalnızca ortak kişisel odadakiler arasında; yalnızca GitHub sürümünde) ----------
 const ETK = () => { const A = window.TusAltyapi; return S.mode === "cloud" && A && A.etkilesim ? A.etkilesim : null; };
 const tebrikSayi = uid => { const e = ETK(); return e ? e.sayi(uid) : { toplam: 0, bugun: 0 }; };
-S.etkDurum = {}; S.durtler = [];
+S.etkDurum = {}; S.durtler = []; S.gelenTebrik = [];
 function etkDugmeleri(uid, p, todayM) {
   const e = ETK(); if (!e || uid === myId() || myRoomCode() === GENEL) return "";
   const d = S.etkDurum[uid];
@@ -2435,6 +2438,8 @@ async function etkKontrol(sebep) {
   try {
     const l = await e.gelenler();
     S.durtler = l.filter(x => x.tur === "durt");
+    const tb = l.filter(x => x.tur === "tebrik");                    // bugün gelen tebrikler: profilde "Bugün tebrik edenler"
+    if (tb.map(x => x.id).join() !== S.gelenTebrik.map(x => x.id).join()) { S.gelenTebrik = tb; if (S.profileId === myId()) renderProfile(); }
     renderEtkKartlar();
     // Günde 5 saat (kronometreli) geçilince uygulamadan bir tebrik; sunucu kayıtlardan ayrıca denetler
     const benim = agg(dayTimed(myId())).dk + Math.floor(todayShare(S.timer) / 60000);
@@ -2884,7 +2889,9 @@ function renderProfile() {
     ? (S.confirmKick === uid
       ? `<span class="small muted" style="margin-right:auto;align-self:center">Listelerden çıkar ve yeniden katılamaz.</span><button class="btn danger" type="button" data-kick-yes>Evet, çıkar</button><button class="btn" type="button" data-kick-no>Vazgeç</button>`
       : `<button class="btn danger" type="button" data-kick>Listeden çıkar</button>`) : "";
-  const etkHTML = full ? etkDugmeleri(uid, p, todayM) : "";
+  // Kendi profilinde: bugün tebrik edenlerin adları (uygulamanın kendi tebriki "TusDostum" olarak görünür)
+  const edenler = uid === myId() && ETK() ? [...new Set(S.gelenTebrik.map(x => x.gonderen ? person(x.gonderen).name : "TusDostum"))] : [];
+  const etkHTML = edenler.length ? `<div class="kd-edenler"><span class="l">👏 Bugün</span><span class="a">${esc(edenler.join(", "))}</span></div>` : full ? etkDugmeleri(uid, p, todayM) : "";
   const body = limited ? `
     <div class="tiles"><div class="tile"><div class="l">Bugün</div><div class="v">${esc(fmtMin(agg(dayTimed(uid)).dk + live))}</div></div></div>` : `
     ${etkHTML}

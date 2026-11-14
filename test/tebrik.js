@@ -188,6 +188,16 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     await B.reload(); await bekle(3500);
     ok('5 saat tebriki aynı gün ikinci kez verilmiyor ve gösterilmiyor', (await etk()).filter(x => !x.gonderen).length === 1 && !(await anlik(B)));
 
+    // ---------- 6b2. Kendi profilinde "Bugün tebrik edenler" ----------
+    await profilAc(B, uB);
+    const edenler = (await B.textContent('#profileOverlay .kd-edenler').catch(() => '')).replace(/\s+/g, ' ').trim();
+    await cek(B, '7-tebrik-edenler');
+    ok('Kendi profilinde bugün tebrik edenler: "Ayşe, TusDostum"', /Bugün/.test(edenler) && /Ayşe, TusDostum/.test(edenler), edenler);
+    await profilKapat(B);
+    await profilAc(A, uB);
+    ok('Başkası B\'nin profilinde kimin tebrik ettiğini GÖRMÜYOR (yalnızca sayı)', !(await A.$('#profileOverlay .kd-edenler')) && /👏 2 tebrik/.test((await A.textContent('#profileOverlay')).replace(/\s+/g, ' ')));
+    await profilKapat(A);
+
     // ---------- 6c. Uygulama yeni açılınca (iPhone sesi ilk dokunuşa kadar açmaz): ses dokunuşla gelir ----------
     await B.context().addInitScript(() => {
       if (sessionStorage.getItem('__iphone') !== '1') return;

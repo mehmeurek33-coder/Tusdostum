@@ -121,6 +121,36 @@ export async function calistir(env, fetchFn = fetch, bekleMs = 1500) {
   if (olu.length) { await rpc("td_olu_abonelikleri_sil", { p_endpointler: [...new Set(olu)] }); sonuc.silinen = new Set(olu).size; }
   return sonuc;
 }
+// Haftalık özet (Pazar akşamı): "📊 Bu hafta 32 sa 10 dk · geçen haftadan 4 sa fazla"
+const sureYaz = (dk) => { const h = Math.floor(dk / 60), m = Math.round(dk % 60); return h && m ? `${h} sa ${m} dk` : h ? `${h} sa` : `${m} dk`; };
+export const HAFTALIK_METIN = (bu, gecen) => {
+  const fark = bu - gecen;
+  if (!(gecen > 0)) return `📊 Bu hafta ${sureYaz(bu)} çalıştın`;
+  if (Math.abs(fark) < 10) return `📊 Bu hafta ${sureYaz(bu)} · geçen haftayla aynı`;
+  return `📊 Bu hafta ${sureYaz(bu)} · geçen haftadan ${sureYaz(Math.abs(fark))} ${fark > 0 ? "fazla" : "az"}`;
+};
+// yalniz: yalnızca bu kişiye (deneme için)
+export async function haftalik(env, fetchFn = fetch, yalniz = "") {
+  const eskiTur = /^eyJ/.test(String(env.anahtar || ""));
+  const rpc = (ad, govde) => fetchFn(`${env.url}/rest/v1/rpc/${ad}`, {
+    method: "POST",
+    headers: { apikey: env.anahtar, ...(eskiTur ? { Authorization: `Bearer ${env.anahtar}` } : {}), "Content-Type": "application/json" },
+    body: JSON.stringify(govde || {}),
+  });
+  const r = await rpc("td_haftalik_ozet");
+  if (!r.ok) throw new Error(`haftalık özet okunamadı (${r.status})`);
+  const satirlar = (await r.json().catch(() => [])) || [];
+  const sonuc = { gonderilen: 0, basarisiz: 0, silinen: 0 };
+  const olu = [];
+  await Promise.all((Array.isArray(satirlar) ? satirlar : []).filter((s) => !yalniz || s.uid === yalniz).map(async (s) => {
+    try {
+      const g = await pushGonder(s, JSON.stringify({ baslik: HAFTALIK_METIN(Number(s.bu_hafta) || 0, Number(s.gecen_hafta) || 0), govde: "", etiket: "td-hafta", url: "./" }), env.vapid, fetchFn);
+      if (g.oldu) sonuc.gonderilen++; else { sonuc.basarisiz++; if (g.olu) olu.push(s.endpoint); }
+    } catch (_e) { sonuc.basarisiz++; }
+  }));
+  if (olu.length) { await rpc("td_olu_abonelikleri_sil", { p_endpointler: [...new Set(olu)] }); sonuc.silinen = new Set(olu).size; }
+  return sonuc;
+}
 export const ETKILESIM_METIN = (s) => s.tur === "tebrik"
   ? `👏 ${s.gonderen_ad || "Bir arkadaşın"} seni tebrik etti`
   : `👋 ${s.gonderen_ad || "Bir arkadaşın"} seni dürttü${s.oda_ad ? " · " + s.oda_ad : ""}`;
@@ -150,11 +180,14 @@ if (D && D.serve) {
     if (!gizli || req.headers.get("x-cron-gizli") !== gizli) return new Response("yetkisiz", { status: 401 });
     try {
       const url = D.env.get("SUPABASE_URL");
-      const sonuc = await calistir({
+      const env = {
         url,
         anahtar: sunucuAnahtari((ad) => D.env.get(ad)),
         vapid: { acik: D.env.get("VAPID_ACIK"), ozel: D.env.get("VAPID_OZEL"), konu: D.env.get("VAPID_KONU") || url },
-      });
+      };
+      let istek = {};
+      try { istek = await req.json(); } catch (_e) { istek = {}; }
+      const sonuc = istek && istek.haftalik ? await haftalik(env, fetch, typeof istek.yalniz === "string" ? istek.yalniz : "") : await calistir(env);
       return new Response(JSON.stringify(sonuc), { headers: { "Content-Type": "application/json" } });
     } catch (e) {
       return new Response(String((e && e.message) || e), { status: 500 });
