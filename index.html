@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="db0c742d5d4a">
+<meta name="td-surum" content="fe5e94bfd027">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -267,9 +267,16 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 .kd:disabled { opacity: .45; }
 .kd.done, .kd.done:disabled { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); opacity: 1; }
 .kd-hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: -6px; }
-.kd-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, #F5A524 55%, var(--line)); background: var(--surface); margin-bottom: 12px; }
+/* Dürtme kartı kronometre çerçevesinin üst kısmında, üstüne biner: kronometre yerinden oynamaz */
+.tc-sarma { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.tc-sarma > .timer-card { flex: 1; }
+#etkKartlar { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 3; pointer-events: none; }
+#etkKartlar > * { pointer-events: auto; }
+@keyframes kdGel { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.kd-card { display: flex; align-items: center; gap: 10px; padding: 8px 6px 8px 12px; border-radius: 14px; border: 1px solid color-mix(in srgb, #F5A524 55%, var(--line)); background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0,0,0,.10); animation: kdGel .45s cubic-bezier(.16,1,.3,1); }
 .kd-card .e { font-size: 26px; line-height: 1; }
-.kd-card.gidiyor { opacity: 0; transform: translateY(-6px); transition: opacity .25s ease, transform .25s ease; pointer-events: none; }
+.kd-card.gidiyor { opacity: 0; transform: translateY(-8px); transition: opacity .4s ease, transform .4s ease; pointer-events: none; }
 .kd-card .t { flex: 1; min-width: 0; font-size: 14px; color: var(--muted); }
 .kd-card .t b { color: var(--ink); display: block; font-size: 15px; }
 .kd-card .x { border: 0; background: none; color: var(--muted); font-size: 20px; width: 44px; height: 44px; flex: none; }
@@ -547,9 +554,8 @@ html, body { margin: 0; }   /* Claude sayfa iskeleti bunu kendisi veriyordu */
   <div id="banner"></div>
 
   <section data-tab-panel="bugun" id="panel-bugun" role="tabpanel" aria-labelledby="tab-bugun" class="stack-gap">
-    <div id="etkKartlar"></div>
     <div class="today-grid">
-      <div class="panel timer-card" id="timerCard"></div>
+      <div class="tc-sarma"><div id="etkKartlar"></div><div class="panel timer-card" id="timerCard"></div></div>
       <div class="stack-gap" id="todaySide"></div>
     </div>
     <div class="panel" id="heatPanel"></div>
@@ -2279,7 +2285,7 @@ function renderEtkKartlar() {
   const l = (S.durtler || []).filter(x => !kapali.includes(x.id));
   if (!l.length && el.querySelector(".kd-card:not(.gidiyor)")) {          // yumuşakça kaybolur
     el.querySelectorAll(".kd-card").forEach(c => c.classList.add("gidiyor"));
-    clearTimeout(el.__t); el.__t = setTimeout(() => { if (!el.querySelector(".kd-card:not(.gidiyor)")) setHTML(el, ""); }, 260);
+    clearTimeout(el.__t); el.__t = setTimeout(() => { if (!el.querySelector(".kd-card:not(.gidiyor)")) setHTML(el, ""); }, 420);
     return;
   }
   if (!l.length && el.querySelector(".kd-card")) return;                  // kayboluyor

@@ -92,11 +92,13 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     await B.evaluate(() => { location.hash = 'bugun'; });
     let kart = '';
     for (let i = 0; i < 40 && !kart; i++) { await bekle(300); kart = (await B.textContent('#etkKartlar').catch(() => '')).replace(/\s+/g, ' ').trim(); }
+    zaman.durt = (Date.now() - zaman.bas) / 1000;
     ok('B\'nin "Bugün" sayfasında: "Ayşe seni dürttü · TSM odası"', /Ayşe seni dürttü/.test(kart) && /TSM odası/.test(kart) && /Başlat/.test(kart), kart);
     await cek(B, '2-durt-karti');
     ok('Dürtme, açılır tebrik kartı çıkarmıyor', !(await anlik(B)));
 
     // ---------- 4. Kronometre başlayınca kart yumuşakça kaybolur; molada geri gelmez ----------
+    await bekle(1200); zaman.basla = (Date.now() - zaman.bas) / 1000;
     await B.click('.timer-card [data-act="start"], [data-act="start"]'); await bekle(100);
     const kayiyor = await B.evaluate(() => !!document.querySelector('#etkKartlar .kd-card.gidiyor'));
     await bekle(700);
