@@ -9,7 +9,8 @@ self.addEventListener("install", e => {
   e.waitUntil(caches.open(SURUM).then(c => c.addAll(KABUK.map(u => new Request(u, { cache: "reload" })))));
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith("td-") && k !== SURUM).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  // eski sürümlerin kabuğu silinir; yazı tipleri ("td-yazitipi") sürümden bağımsızdır, silinmez
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith("td-") && k !== SURUM && k !== "td-yazitipi").map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener("message", e => { if (e.data === "etkinles") self.skipWaiting(); });
 

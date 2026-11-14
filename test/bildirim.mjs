@@ -95,6 +95,17 @@ const s2 = await calistir({ url: 'https://p.supabase.co', anahtar: 'k', vapid },
 const giden2 = ist2.find(x => x.url === abone.endpoint);
 const ileti2 = giden2 ? JSON.parse(coz(giden2.sec.body)) : {};
 ok('Kuyruktaki tebrik telefona gidiyor: "👏 Ayşe seni tebrik etti"', s2.gonderilen === 1 && ileti2.baslik === '👏 Ayşe seni tebrik etti' && ileti2.etiket === 'td-tebrik-7', JSON.stringify([s2, ileti2]));
+// Kuyruk ilk denemede okunamazsa (sunucu güncellemesi anı) yeniden denenir; üç kez de olmazsa hata verir
+let deneme = 0;
+const s3 = await calistir({ url: 'https://p.supabase.co', anahtar: 'k', vapid }, async (url) => {
+  if (url.endsWith('td_vadesi_gelenler')) { deneme++; return deneme < 2 ? new Response('yeniden yükleniyor', { status: 555 }) : new Response(JSON.stringify([{ uid: 'u1', tur: 'mola', dk: 10, sira: 0, ...abone }]), { status: 200 }); }
+  if (url.endsWith('td_bekleyen_etkilesimler')) return new Response('[]', { status: 200 });
+  return new Response('', { status: 201 });
+}, 5);
+ok('Kuyruk ilk denemede okunamayınca yeniden deneniyor ve bildirim gidiyor', deneme === 2 && s3.gonderilen === 1, JSON.stringify([deneme, s3]));
+let deneme2 = 0, hata = '';
+try { await calistir({ url: 'https://p.supabase.co', anahtar: 'k', vapid }, async () => { deneme2++; return new Response('', { status: 555 }); }, 5); } catch (e) { hata = e.message; }
+ok('Üç denemede de okunamazsa hata bildiriliyor (uyarı kuyrukta kalır, sonraki dakika gider)', deneme2 === 3 && /kuyruk okunamadı \(555\)/.test(hata), `${deneme2} ${hata}`);
 fs.unlinkSync(gecici);
 console.log(out.join('\n'));
 console.log(`\n${out.filter(x => x.startsWith('GEÇTİ')).length} geçti, ${out.filter(x => x.startsWith('KALDI')).length} kaldı`);

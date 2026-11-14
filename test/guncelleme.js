@@ -50,6 +50,7 @@ const KOK = path.resolve(__dirname, '..');
     const ozet = async () => (await S.sql(`select md5(string_agg(belge || ':' || veri::text, '|' order by belge)) as h from ozel_belgeler where uid = $1 and belge <> 'kronometre'`, [uid]))[0].h;
     const once = await ozet();
 
+    await p.evaluate(async () => { const c = await caches.open('td-yazitipi'); await c.put('/sahte-yazi-tipi.woff2', new Response('x')); });
     // --- yeni sürüm yayınlandı ---
     const v2 = yeniSurumYap();
     const yA = yuklemeler;
@@ -73,6 +74,8 @@ const KOK = path.resolve(__dirname, '..');
     for (let i = 0; i < 40 && yuklemeler === yA; i++) await bekle(200);
     await bekle(2000);
     ok('Kimse çalışmıyorken öne gelince yeni sürüm devreye girdi', yuklemeler > yA && (await surum()) === v2);
+    const onbellek = await p.evaluate(async () => ({ adlar: await caches.keys(), yazi: !!(await (await caches.open('td-yazitipi')).match('/sahte-yazi-tipi.woff2')) }));
+    ok('Güncellemede eski sürümün dosyaları silindi ama yazı tipleri telefonda kaldı', onbellek.yazi && onbellek.adlar.filter(k => /^td-[0-9a-f]+$/.test(k)).length === 1, JSON.stringify(onbellek));
     ok('"Uygulama güncellendi." bildirimi', /güncellendi/.test(await p.textContent('#toast').catch(() => '')));
     await bekle(1500);
     ok('Güncellemenin kendisi kayıtlara dokunmadı (öncesi ve sonrası birebir aynı)', guncellemeOncesi === await ozet());

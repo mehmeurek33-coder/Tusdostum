@@ -287,8 +287,7 @@ end $$;
 -- Tekrar hakkı kalan uyarı 5 dakika sonrasına yeniden kurulur (kişi çalışmaya dönünce uygulama listeyi siler).
 -- Çalışma uyarısı tekrarlanmaz ve gönderilmeden önce son oturum (son moladan beri) kişinin kronometresinden yeniden
 -- hesaplanır: kronometre çalışmıyorsa ya da son oturum kişinin seçtiği süreyi (30–120 dk) aşmadıysa gönderilmez.
-drop function if exists public.td_vadesi_gelenler();
-create function public.td_vadesi_gelenler() returns table (uid uuid, tur text, dk int, sira int, endpoint text, p256dh text, auth text)
+create or replace function public.td_vadesi_gelenler() returns table (uid uuid, tur text, dk int, sira int, endpoint text, p256dh text, auth text)
 language plpgsql security definer set search_path = public as $$
 declare r record; t jsonb;
 begin

@@ -82,7 +82,7 @@ export const METIN = {
 };
 
 // Vakti gelen uyarıları al, gönder, ölü abonelikleri temizle
-export async function calistir(env, fetchFn = fetch) {
+export async function calistir(env, fetchFn = fetch, bekleMs = 1500) {
   // Yeni tür gizli anahtar (sb_secret_…) yalnızca "apikey" başlığında gider; eski tür (JWT) ayrıca Authorization ister
   const eskiTur = /^eyJ/.test(String(env.anahtar || ""));
   const rpc = (ad, govde) => fetchFn(`${env.url}/rest/v1/rpc/${ad}`, {
@@ -90,7 +90,9 @@ export async function calistir(env, fetchFn = fetch) {
     headers: { apikey: env.anahtar, ...(eskiTur ? { Authorization: `Bearer ${env.anahtar}` } : {}), "Content-Type": "application/json" },
     body: JSON.stringify(govde || {}),
   });
-  const r = await rpc("td_vadesi_gelenler");
+  // Sunucu güncellenirken kuyruk bir an okunamayabilir: bildirim bir dakika gecikmesin diye iki kez daha denenir
+  let r = await rpc("td_vadesi_gelenler");
+  for (let i = 0; i < 2 && !r.ok; i++) { await new Promise((c) => setTimeout(c, bekleMs)); r = await rpc("td_vadesi_gelenler"); }
   if (!r.ok) throw new Error(`kuyruk okunamadı (${r.status})`);
   const satirlar = await r.json();
   const sonuc = { gonderilen: 0, basarisiz: 0, silinen: 0 };
