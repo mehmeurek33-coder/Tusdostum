@@ -12,7 +12,7 @@ const DB = 'tdtest_e2e';
 const PK = { profiller: ['uid'], son_gunler: ['uid'], ozel_belgeler: ['uid', 'belge'] };
 const JSONB_SUTUN = new Set(['veri', 'son']);
 const JSONB_ARG = { td_profil_guncelle: ['p_yama'], td_ozel_guncelle: ['p_yama'], td_ozel_birlestir: ['p_yama'], td_uyarilari_ayarla: ['p'] };
-const RPC_TABLO = { td_profil_guncelle: ['profiller'], td_ozel_guncelle: ['ozel_belgeler'], td_ozel_birlestir: ['ozel_belgeler'], td_odalari_ayarla: ['oda_uyeleri'], td_kisi_cikar: ['profiller', 'son_gunler', 'oda_uyeleri'] };
+const RPC_TABLO = { td_etkilesim_gonder: ['tebrik_ozet', 'etkilesimler'], td_hedef_tebrik: ['tebrik_ozet', 'etkilesimler'], td_profil_guncelle: ['profiller'], td_ozel_guncelle: ['ozel_belgeler'], td_ozel_birlestir: ['ozel_belgeler'], td_odalari_ayarla: ['oda_uyeleri'], td_kisi_cikar: ['profiller', 'son_gunler', 'oda_uyeleri'] };
 const AD = /^[a-z_][a-z0-9_]*$/;
 const TIP = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.css': 'text/css' };
 
@@ -67,7 +67,7 @@ async function baslat(port = 0, { vapid = '', gercek = false, kok = KOK } = {}) 
       const adlar = Object.keys(b.args || {}).filter(k => AD.test(k));
       const deger = adlar.map(k => ((JSONB_ARG[fn] || []).includes(k) ? JSON.stringify(b.args[k]) : b.args[k]));
       const r = await sorgu(uid, async c => (await c.query(`select public.${fn}(${adlar.map((k, i) => `${k} => $${i + 1}`).join(', ')}) as r`, deger)).rows[0].r);
-      if (!r.error) (RPC_TABLO[fn] || []).forEach(t => olay(t, fn === 'td_kisi_cikar' ? b.args.p_uid : uid, (b.args || {}).p_belge));
+      if (!r.error) (RPC_TABLO[fn] || []).forEach(t => olay(t, fn === 'td_kisi_cikar' ? b.args.p_uid : fn === 'td_etkilesim_gonder' ? b.args.p_alici : uid, (b.args || {}).p_belge));
       return r;
     }
     if (!AD.test(table)) return { data: null, error: { message: 'bad table' } };

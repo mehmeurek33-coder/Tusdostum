@@ -158,8 +158,8 @@ degis("  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); rende
       "  syncAlerts();\n  pushPresence(); renderTimerCard(); renderHeader(); renderStrip(); renderToday();\n  scheduleTick();\n}\nfunction startTimer() {", "setTimer")
 degis("workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  kilitBaslat();\n  requestWake();",
       "workMs: 0, breakStart: null, breakMs: 0, bn: 0 });\n  kilitBaslat();\n  if (workWarnMin()) armSound();\n  requestWake();", "başlat")
-degis("if (breakWarnMin()) { armSound(); if (!kilitSes) startBreakAudio(); requestWake(); }",
-      "if (breakWarnMin()) { armSound(); if (!kilitSes && !pushOn()) startBreakAudio(); requestWake(); }", "mola sesi")
+degis("if (breakWarnMin()) { if (!kilitSes) startBreakAudio(); requestWake(); }",
+      "if (breakWarnMin()) { if (!kilitSes && !pushOn()) startBreakAudio(); requestWake(); }", "mola sesi")
 degis("breakStart: null, runStart: now, bn: num(t.bn) + 1 });\n  kilitBaslat();\n  requestWake();",
       "breakStart: null, runStart: now, bn: num(t.bn) + 1 });\n  kilitBaslat();\n  if (workWarnMin()) armSound();\n  requestWake();", "dön")
 

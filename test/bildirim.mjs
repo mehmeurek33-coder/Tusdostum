@@ -10,7 +10,7 @@ const BURASI = path.dirname(fileURLToPath(import.meta.url));
 const kaynak = fs.readFileSync(path.join(BURASI, '../supabase/functions/uyari-gonder/index.ts'), 'utf8').replace('(globalThis as any)', '(globalThis)');
 const gecici = path.join(os.tmpdir(), `td-uyari-${process.pid}.mjs`);
 fs.writeFileSync(gecici, kaynak);
-const { sifrele, vapidYetki, calistir, sunucuAnahtari } = await import(pathToFileURL(gecici).href);
+const { sifrele, vapidYetki, calistir, sunucuAnahtari, ETKILESIM_METIN } = await import(pathToFileURL(gecici).href);
 
 const out = [];
 const ok = (ad, kosul, ek = '') => out.push(`${kosul ? 'GEÇTİ ' : 'KALDI '} ${ad}${!kosul && ek ? ' — ' + ek : ''}`);
@@ -83,6 +83,18 @@ ok('Bütün bildirimler tek satır başlık, açıklama yok', ['mola', 'calisma'
 const sil = istekler.find(x => x.url.endsWith('td_olu_abonelikleri_sil'));
 ok('Yalnızca 404/410 dönen abonelik siliniyor (500 dönen kalıyor)', sil && JSON.stringify(JSON.parse(sil.secenek.body).p_endpointler) === JSON.stringify(['https://push.ornek.dev/gonder/olu']), sil && sil.secenek.body);
 
+ok('Tebrik ve dürtme bildirim metinleri', ETKILESIM_METIN({ tur: 'tebrik', gonderen_ad: 'Ayşe' }) === '👏 Ayşe seni tebrik etti' && ETKILESIM_METIN({ tur: 'durt', gonderen_ad: 'Burak', oda_ad: 'TSM' }) === '👋 Burak seni dürttü · TSM' && ETKILESIM_METIN({ tur: 'durt', gonderen_ad: 'Burak', oda_ad: null }) === '👋 Burak seni dürttü');
+// Akış: kuyrukta bir tebrik varsa gönderilir
+const ist2 = [];
+const s2 = await calistir({ url: 'https://p.supabase.co', anahtar: 'k', vapid }, async (url, sec) => {
+  ist2.push({ url, sec });
+  if (url.endsWith('td_vadesi_gelenler')) return new Response('[]', { status: 200 });
+  if (url.endsWith('td_bekleyen_etkilesimler')) return new Response(JSON.stringify([{ id: 7, tur: 'tebrik', gonderen_ad: 'Ayşe', oda_ad: 'TSM', ...abone }]), { status: 200 });
+  return new Response('', { status: 201 });
+});
+const giden2 = ist2.find(x => x.url === abone.endpoint);
+const ileti2 = giden2 ? JSON.parse(coz(giden2.sec.body)) : {};
+ok('Kuyruktaki tebrik telefona gidiyor: "👏 Ayşe seni tebrik etti"', s2.gonderilen === 1 && ileti2.baslik === '👏 Ayşe seni tebrik etti' && ileti2.etiket === 'td-tebrik-7', JSON.stringify([s2, ileti2]));
 fs.unlinkSync(gecici);
 console.log(out.join('\n'));
 console.log(`\n${out.filter(x => x.startsWith('GEÇTİ')).length} geçti, ${out.filter(x => x.startsWith('KALDI')).length} kaldı`);

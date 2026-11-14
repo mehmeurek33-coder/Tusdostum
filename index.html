@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="0298a71fd2a3">
+<meta name="td-surum" content="5888940de976">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -257,6 +257,33 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 /* Oda kutusu: içerik parmakla kayar (kutu sabit kalır) */
 #onlinePanel { overflow: hidden; overflow: clip; }
 #onlinePanel .rbody { will-change: transform; }
+/* Tebrik ve dürtme */
+.kd-chip { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; white-space: nowrap; }
+.kd-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kd-row.tek { grid-template-columns: 1fr; }
+.kd { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; border-radius: 14px; font-weight: 700; font-size: 16px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); }
+.kd.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.kd.durt.on { background: #F5A524; border-color: #F5A524; color: #2A1A00; }
+.kd:disabled { opacity: .45; }
+.kd.done, .kd.done:disabled { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); opacity: 1; }
+.kd-hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: -6px; }
+.kd-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, #F5A524 55%, var(--line)); background: var(--surface); margin-bottom: 12px; }
+.kd-card .e { font-size: 26px; line-height: 1; }
+.kd-card .t { flex: 1; min-width: 0; font-size: 14px; color: var(--muted); }
+.kd-card .t b { color: var(--ink); display: block; font-size: 15px; }
+.kd-card .x { border: 0; background: none; color: var(--muted); font-size: 20px; width: 44px; height: 44px; flex: none; }
+@keyframes tbArka { from { opacity: 0; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); } to { opacity: 1; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); } }
+@keyframes tbKart { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes tbGit { to { opacity: 0; } }
+@keyframes tbEl { 0% { transform: scale(.6) rotate(-12deg); } 60% { transform: scale(1.12) rotate(6deg); } 100% { transform: scale(1) rotate(0); } }
+.tb-anlik { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; border: 0; width: 100%; cursor: pointer;
+  background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: tbArka .35s ease-out; color: var(--ink); }
+.tb-anlik .kutu { width: min(320px, 100%); text-align: center; animation: tbKart .5s .15s cubic-bezier(.16,1,.3,1) both; }
+.tb-anlik.gidiyor { animation: tbGit .15s ease-in forwards; pointer-events: none; }
+.tb-anlik .e { display: block; font-size: 60px; line-height: 1; margin-bottom: 14px; animation: tbEl .7s .2s cubic-bezier(.16,1,.3,1) both; }
+.tb-anlik b { display: block; font-size: 22px; line-height: 1.3; }
+.tb-anlik .s { display: block; margin-top: 6px; font-size: 15px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .tb-anlik, .tb-anlik .kutu, .tb-anlik .e { animation: none; } }
 .av { width: 34px; height: 34px; border-radius: 50%; flex: none; object-fit: cover; background: var(--surface-2); display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; }
 .av { font-size: 19px; line-height: 1; }
 .av.sm { width: 26px; height: 26px; font-size: 14px; }
@@ -519,6 +546,7 @@ html, body { margin: 0; }   /* Claude sayfa iskeleti bunu kendisi veriyordu */
   <div id="banner"></div>
 
   <section data-tab-panel="bugun" id="panel-bugun" role="tabpanel" aria-labelledby="tab-bugun" class="stack-gap">
+    <div id="etkKartlar"></div>
     <div class="today-grid">
       <div class="panel timer-card" id="timerCard"></div>
       <div class="stack-gap" id="todaySide"></div>
@@ -965,7 +993,12 @@ const breakWarnMin = () => { const v = Number((S.settings || {}).breakWarn); ret
 const breakOver = (t, now = Date.now()) => { const w = breakWarnMin(); return !!w && onBreak(t) && curBreak(t, now) >= w * 60000; };
 let actx = null;
 function armSound() {                                              // ses yalnızca bir dokunuşla açılabilir; "Mola ver"e basılınca hazırlanır
-  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch {}
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state !== "running") actx.resume();
+    // iPhone: dokunuş anında kısa bir sessiz ses çalınmazsa ses kilidi açılmayabilir
+    const b = actx.createBufferSource(); b.buffer = actx.createBuffer(1, 1, 22050); b.connect(actx.destination); b.start(0);
+  } catch {}
 }
 function beep() {
   if (!actx) return;
@@ -982,6 +1015,31 @@ function beep() {
     });
   } catch {}
 }
+// Tebrik sesi (marimba: iki yumuşak nota). Ses ancak bir dokunuştan sonra açılabildiği için çalamıyorsa sessiz geçer;
+// sonradan (ör. kapatmak için dokununca) gecikmeli çalmaz.
+function tebrikSesi() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const cal = () => {
+      const t0 = actx.currentTime + 0.03;
+      [[0, 784], [0.16, 1046.5]].forEach(([dt, f], i) => {
+        [[1, 0.32], [4, 0.06], [10, 0.015]].forEach(([k, v]) => {
+          const o = actx.createOscillator(), g = actx.createGain();
+          o.type = "sine"; o.frequency.value = f * k;
+          const s0 = t0 + dt, son = (i ? 1.1 : 0.7) / k;
+          g.gain.setValueAtTime(0.0001, s0); g.gain.exponentialRampToValueAtTime(v, s0 + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, s0 + son);
+          o.connect(g); g.connect(actx.destination); o.start(s0); o.stop(s0 + son + 0.05);
+        });
+      });
+    };
+    if (actx.state === "running") { cal(); return; }
+    const bas = Date.now();
+    actx.resume().then(() => { if (actx.state === "running" && Date.now() - bas < 400) cal(); }).catch(() => {});
+  } catch {}
+}
+// Her dokunuşta (ses kapalıysa) ses yeniden hazırlanır: iPhone arka plana geçince sesi kapatır. iPhone yalnızca
+// "touchend" ve "click" anında açılmaya izin verir, "pointerdown"da vermez.
+["touchend", "click"].forEach(ad => document.addEventListener(ad, () => { if (!actx || actx.state !== "running") armSound(); }, { capture: true, passive: true }));
 function makeAlarmWav(silenceSec, beepSec = 8) {
   const rate = 8000, n = Math.floor((silenceSec + beepSec) * rate);
   const buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer);
@@ -1442,7 +1500,8 @@ function setTimer(t) {
   S.timer = t ? { ...t } : null;
   S.timerRev = Math.max(Date.now(), S.timerRev + 1);
   if (!onBreak(S.timer)) stopBreakAudio();
-  if (!S.timer) kilitDurdur(); else kilitGuncelle();
+  if (!S.timer) { kilitDurdur(); setTimeout(etkKontrol, 400); } else kilitGuncelle();
+  renderEtkKartlar();
   if (S.mode === "local") writeRoot({ timer: S.timer });
   else if (S.mode === "cloud") { writeKronometre(); writeRoot({ timer: S.timer }); }
   syncAlerts();
@@ -1461,7 +1520,9 @@ function pauseTimer() {
   const now = Date.now();
   setTimer({ ...t, workMs: timerWork(t, now), breakMs: num(t.breakMs) + runOverflow(t, now), runStart: null, breakStart: now });
   kilitBaslat();
-  if (breakWarnMin()) { armSound(); if (!kilitSes && !pushOn()) startBreakAudio(); requestWake(); }
+  armSound();                                                        // mola kartındaki tebrik sesi için de gerekli
+  if (breakWarnMin()) { if (!kilitSes && !pushOn()) startBreakAudio(); requestWake(); }
+  setTimeout(() => etkKontrol("mola"), 400);
 }
 function resumeTimer() {
   const t = S.timer; if (!t || !onBreak(t) || readOnly()) return;
@@ -1656,6 +1717,8 @@ function onBothReady() {
     enqueue(path, async () => { await db.doc(path).set({ ...S.roots[S.me.id] }); S.rootDocExists = true; });
   }
   migrate().then(() => { ensureFirstDay(); syncShared(); checkLocalImport(); syncAlerts(); render(); renderTimerCard(); maybeOnboard(); });
+  const E = ETK();
+  if (E) { E.degisince(() => { if (S.tab === "salon") renderSalon(); if (S.profileId) renderProfile(); etkKontrol(); }); setTimeout(etkKontrol, 1500); }
 }
 
 // Eski sürümlerin verisini özel alana taşı (yalnızca iki görüntü de gelince, tek sefer)
@@ -2156,6 +2219,104 @@ $("logPanel").addEventListener("click", e => {
   if (e.target.closest("[data-act-new]") && !readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() });
 });
 
+// ---------- Tebrik ve dürtme (yalnızca ortak kişisel odadakiler arasında; yalnızca GitHub sürümünde) ----------
+const ETK = () => { const A = window.TusAltyapi; return S.mode === "cloud" && A && A.etkilesim ? A.etkilesim : null; };
+const tebrikSayi = uid => { const e = ETK(); return e ? e.sayi(uid) : { toplam: 0, bugun: 0 }; };
+S.etkDurum = {}; S.durtler = [];
+function etkDugmeleri(uid, p, todayM) {
+  const e = ETK(); if (!e || uid === myId() || myRoomCode() === GENEL) return "";
+  const d = S.etkDurum[uid];
+  if (!d || Date.now() - d.t > 30000) {                              // düğme durumu sunucudan (en çok 30 sn eski)
+    if (!S.etkYukle) { S.etkYukle = true; e.durum(uid).then(r => { S.etkDurum[uid] = { ...(r || {}), t: Date.now() }; }).catch(() => {}).finally(() => { S.etkYukle = false; if (S.profileId === uid) renderProfile(); }); }
+  }
+  const st = p ? p.pr.st : "offline", aktif = st === "calisiyor" || st === "mola", nm = person(uid).name;
+  const tebrikOk = !!d && !d.tebrik && (todayM > 0 || aktif);
+  const durtGoster = !d || !d.durtmeKapali;
+  const durtOk = !!d && !d.durt && !aktif && todayM === 0 && (d.durtSayisi || 0) < 2;
+  let ipucu = "";
+  if (d) {
+    if (d.tebrik && (todayM > 0 || aktif)) ipucu = "Bugün tebrik ettin";
+    else if (st === "calisiyor") ipucu = `${nm} şu an çalışıyor`;
+    else if (st === "mola") ipucu = `${nm} molada`;
+    else if (todayM === 0) ipucu = d.durt ? "Bugün dürttün" : (d.durtSayisi || 0) >= 2 ? `${nm} bugün 2 kez dürtüldü` : `${nm} bugün henüz çalışmadı${d.durtSayisi ? " · bugün 2 dürtme hakkından 1'i kullanıldı" : ""}`;
+  }
+  return `<div class="kd-row${durtGoster ? "" : " tek"}"><button class="kd${tebrikOk ? " on" : ""}${d && d.tebrik ? " done" : ""}" type="button" data-etk="tebrik"${tebrikOk ? "" : " disabled"}>${d && d.tebrik ? "👏 Tebrik edildi ✓" : "👏 Tebrik et"}</button>${durtGoster ? `<button class="kd durt${durtOk ? " on" : ""}${d && d.durt ? " done" : ""}" type="button" data-etk="durt"${durtOk ? "" : " disabled"}>${d && d.durt ? "👋 Dürtüldü ✓" : "👋 Dürt"}</button>` : ""}</div>${ipucu ? `<div class="kd-hint">${esc(ipucu)}</div>` : ""}`;
+}
+function etkGonder(uid, tur, btn) {
+  const e = ETK(); if (!e || !uid || readOnly()) return;
+  btn.disabled = true;
+  e.gonder(uid, tur).then(r => {
+    const m = { tamam: tur === "tebrik" ? "Tebrik gönderildi." : "Dürtme gönderildi.", zaten: "Bugün zaten gönderdin.", hak_doldu: "Bugünkü dürtme hakkı doldu.",
+      calisiyor: "Şu an çalışıyor; dürtülemez.", kapali: "Dürtmeleri kapalı.", ortak_oda_yok: "Ortak odanız yok." }[r] || "Gönderilemedi.";
+    toast(m);
+  }).catch(() => { toast("Gönderilemedi. Bağlantını kontrol et."); })
+    .finally(() => { delete S.etkDurum[uid]; renderProfile(); if (S.tab === "salon") renderSalon(); });
+}
+const isimler = l => l.length === 1 ? l[0] : l.length === 2 ? `${l[0]} ve ${l[1]}` : l.length === 3 ? `${l[0]}, ${l[1]} ve ${l[2]}` : `${l[0]}, ${l[1]} ve ${l.length - 2} kişi daha`;
+// Ortada, arkası bulanık tebrik penceresi; dokununca kapanır
+function tebrikAnlik(adlar, mola, hedef) {
+  document.querySelectorAll(".tb-anlik").forEach(x => x.remove());
+  const el = document.createElement("button");
+  el.type = "button"; el.className = "tb-anlik"; el.setAttribute("aria-label", "Kapat");
+  const baslik = hedef ? "Tebrikler, 5 saati geçtin!" : `${isimler(adlar)} seni tebrik etti`;
+  const alt = hedef ? (adlar.length ? `${isimler(adlar)} de seni tebrik etti` : "") : mola ? (adlar.length > 1 ? "Çalışırken gönderdiler" : "Çalışırken gönderdi") : "";
+  el.innerHTML = `<span class="kutu" role="dialog" aria-live="polite"><span class="e" aria-hidden="true">👏</span><b>${esc(baslik)}</b>${alt ? `<span class="s">${esc(alt)}</span>` : ""}</span>`;
+  el.addEventListener("click", () => { el.classList.add("gidiyor"); setTimeout(() => el.remove(), 150); });
+  document.body.appendChild(el);
+  setTimeout(tebrikSesi, 150);                                       // yazı belirirken
+  try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
+}
+function renderEtkKartlar() {
+  const el = $("etkKartlar"); if (!el) return;
+  const e = ETK(), kapali = PREF.durtKapat || [];
+  const l = S.timer && !onBreak(S.timer) ? [] : (S.durtler || []).filter(x => !kapali.includes(x.id));   // çalışırken dürtme kartı da görünmez
+  setHTML(el, l.map(x => {
+    const oda = e ? e.odaAdi(x.oda) : "", saat = (() => { const d = new Date(x.zaman); return isNaN(d) ? "" : `${pad(d.getHours())}:${pad(d.getMinutes())}`; })();
+    return `<div class="kd-card"><span class="e" aria-hidden="true">👋</span><span class="t"><b>${esc(person(x.gonderen).name)} seni dürttü</b>${esc([oda ? oda + " odası" : "", saat].filter(Boolean).join(" · "))}</span>
+      ${S.timer ? "" : `<button class="btn sm primary" type="button" data-durt-basla>Başlat</button>`}<button class="x" type="button" data-durt-kapat="${x.id}" aria-label="Kapat">×</button></div>`;
+  }).join(""));
+}
+document.addEventListener("click", e => {
+  const k = e.target.closest("[data-durt-kapat]");
+  if (k) { PREF.durtKapat = [...(PREF.durtKapat || []), Number(k.dataset.durtKapat)].slice(-40); savePref(); renderEtkKartlar(); return; }
+  if (e.target.closest("[data-durt-basla]")) {
+    PREF.durtKapat = [...(PREF.durtKapat || []), ...(S.durtler || []).map(x => x.id)].slice(-40); savePref();
+    if (!S.timer && !readOnly()) startTimer();
+    renderEtkKartlar();
+  }
+});
+// Gelen tebrik ve dürtmelere bak. Çalışırken tebrik gösterilmez; mola verince ya da çalışmıyorken bir kez gösterilir.
+let etkMesgul = false;
+const HEDEF_TEBRIK_DK = 300;
+async function etkKontrol(sebep) {
+  const e = ETK(); if (!e || document.hidden || etkMesgul || readOnly()) return;
+  etkMesgul = true;
+  try {
+    const l = await e.gelenler();
+    S.durtler = l.filter(x => x.tur === "durt");
+    renderEtkKartlar();
+    // Günde 5 saat (kronometreli) geçilince uygulamadan bir tebrik; sunucu kayıtlardan ayrıca denetler
+    const benim = agg(dayTimed(myId())).dk + Math.floor(todayShare(S.timer) / 60000);
+    if (benim >= HEDEF_TEBRIK_DK && S.hedefGun !== todayKey() && !l.some(x => x.tur === "tebrik" && !x.gonderen)) {
+      const r = await e.hedef().catch(() => "");
+      if (r === "tamam" || r === "zaten") S.hedefGun = todayKey();
+      if (r === "tamam") { etkMesgul = false; return etkKontrol(sebep); }
+    }
+    const calisiyor = !!S.timer && !onBreak(S.timer);
+    if (calisiyor) return;
+    const yeni = l.filter(x => x.tur === "tebrik" && !x.goruldu);
+    const durtGor = l.filter(x => x.tur === "durt" && !x.goruldu);
+    if (yeni.length && $("modalOverlay").hidden) {
+      const hedef = yeni.some(x => !x.gonderen);
+      tebrikAnlik([...new Set(yeni.filter(x => x.gonderen).map(x => person(x.gonderen).name))], sebep === "mola", hedef);
+      await e.goruldu(yeni.map(x => x.id));
+    }
+    if (durtGor.length) await e.goruldu(durtGor.map(x => x.id));
+  } catch {} finally { etkMesgul = false; }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(etkKontrol, 800); });
+setInterval(() => { if (!document.hidden) etkKontrol(); }, 60000);
+
 // ---------- Salon ----------
 function renderSalon() {
   const rc = myRoomCode(), me = myId();
@@ -2175,7 +2336,7 @@ function renderSalon() {
     else if (pr.st === "online") { st = "Çevrimiçi"; dotCls = "away"; }
     const tag = canOpen(p.key) ? ["button", ` type="button" data-profile="${esc(p.key)}"`] : ["div", ""];
     return `<${tag[0]} class="person${pr.st === "offline" ? " is-off" : ""}"${tag[1]}><span class="av-wrap">${avatarHTML(p.key)}<span class="dot ${dotCls}"></span></span>
-      <span class="who"><span class="nm">${esc(person(p.key).name)}${p.isMe ? `<span class="you-tag">sen</span>` : ""}</span><span class="st">${sk && ms !== null ? badge(sk, "sm") : ""}<span>${esc(st)}</span></span></span>
+      <span class="who"><span class="nm">${esc(person(p.key).name)}${p.isMe ? `<span class="you-tag">sen</span>` : ""}${rc !== GENEL && tebrikSayi(p.key).bugun ? `<span class="kd-chip" title="Bugünkü tebrik">👏 ${tebrikSayi(p.key).bugun}</span>` : ""}</span><span class="st">${sk && ms !== null ? badge(sk, "sm") : ""}<span>${esc(st)}</span></span></span>
       <span class="elapsed${elCls}">${ms !== null ? `<span data-live="${esc(p.key)}">${fmtClock(ms)}</span>` : ""}<small>bugün ${esc(fmtMin(tot[p.key]))}</small></span></${tag[0]}>`;
   }).join("");
   const studying = ppl.filter(p => p.pr.st === "calisiyor").length;
@@ -2576,14 +2737,16 @@ function renderProfile() {
   }).join("");
   const title = `<div style="display:flex;gap:12px;align-items:center;min-width:0;flex:1">${avatarHTML(uid)}
       <div style="min-width:0"><h2 id="profTitle">${esc(person(uid).name)}${uid === myId() ? `<span class="you-tag">sen</span>` : ""}</h2>
-      <div class="small muted">${esc(status)} · <span class="room-chip">${myRoomCode() === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</span></div></div></div>
+      <div class="small muted">${esc(status)} · <span class="room-chip">${myRoomCode() === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</span>${ETK() && tebrikSayi(uid).toplam ? ` <span class="kd-chip" title="Toplam tebrik">👏 ${tebrikSayi(uid).toplam} tebrik</span>` : ""}</div></div></div>
     <button class="close" type="button" data-close-prof aria-label="Kapat">×</button>`;
   const kick = S.isOwner && S.mode === "cloud" && uid !== myId()
     ? (S.confirmKick === uid
       ? `<span class="small muted" style="margin-right:auto;align-self:center">Listelerden çıkar ve yeniden katılamaz.</span><button class="btn danger" type="button" data-kick-yes>Evet, çıkar</button><button class="btn" type="button" data-kick-no>Vazgeç</button>`
       : `<button class="btn danger" type="button" data-kick>Listeden çıkar</button>`) : "";
+  const etkHTML = full ? etkDugmeleri(uid, p, todayM) : "";
   const body = limited ? `
     <div class="tiles"><div class="tile"><div class="l">Bugün</div><div class="v">${esc(fmtMin(agg(dayTimed(uid)).dk + live))}</div></div></div>` : `
+    ${etkHTML}
     <div class="tiles">
       <div class="tile"><div class="l">Bugün</div><div class="v">${esc(fmtMin(todayM))}</div><div class="s">${live ? `canlı ${esc(fmtMin(live))} dahil` : (son[tk] && son[tk].q ? `${fmtNum(son[tk].q)} soru` : "–")}</div></div>
       <div class="tile"><div class="l">Son 10 gün</div><div class="v">${esc(fmtMin(tot.m + live))}</div><div class="s">${tot.q ? `${fmtNum(tot.q)} soru` : "–"}</div></div>
@@ -2610,6 +2773,8 @@ function renderProfile() {
 }
 $("profileOverlay").addEventListener("click", e => {
   if (e.target === e.currentTarget || e.target.closest("[data-close-prof]")) { S.profileId = null; S.confirmKick = null; renderProfile(); syncLock(); return; }
+  const eb = e.target.closest("[data-etk]");
+  if (eb) { if (!eb.disabled) etkGonder(S.profileId, eb.dataset.etk, eb); return; }
   if (e.target.closest("[data-kick-yes]")) { kickUser(S.profileId); return; }
   if (e.target.closest("[data-kick-no]")) { S.confirmKick = null; renderProfile(); return; }
   if (e.target.closest("[data-kick]")) { S.confirmKick = S.profileId; renderProfile(); }
@@ -3054,6 +3219,7 @@ function openSettings() {
       <label class="field">Günlük soru hedefi<input type="number" id="gQ" inputmode="numeric" min="10" max="3000" value="${g.q}"></label>
     </div>
     <label class="field">Sınav tarihi<input type="date" id="gE" value="${esc(g.exam)}"></label>
+    ${ETK() ? `<label class="check"><input type="checkbox" id="gDurt"${S.settings.durtmeKapali ? "" : " checked"}><span>Dürtmelere izin ver</span></label>` : ""}
     ${kilitDestek() ? `<label class="check"><input type="checkbox" id="gLock"${PREF.kilitSayac ? " checked" : ""}><span>Kilit ekranında sayaç <span class="hint">(deneysel · açıkken çalan müzik durur)</span></span></label>` : ""}
     ${downloads ? `<div class="howto"><span class="sec-title">Yedek</span>
       <span class="copyrow"><button class="btn sm" type="button" data-backup="json">Yedeği indir (JSON)</button><button class="btn sm" type="button" data-backup="csv">Kayıtları indir (CSV)</button><button class="btn sm" type="button" id="gRestore"${ro ? " disabled" : ""}>Yedekten yükle</button><input type="file" id="gFile" accept="application/json,.json" hidden></span></div>` : ""}
@@ -3090,6 +3256,7 @@ function openSettings() {
     if (ge && !isDateStr(ge)) { $("gErr").textContent = "Geçerli bir sınav tarihi seç."; return; }
     writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "" });
     const before = myRoomKeys().join("|");
+    if ($("gDurt") && !!S.settings.durtmeKapali === $("gDurt").checked) writeSettings({ durtmeKapali: !$("gDurt").checked });
     if ($("gLock")) { PREF.kilitSayac = $("gLock").checked; savePref(); if (PREF.kilitSayac) kilitBaslat(); else kilitDurdur(); }
     writeRoot({ nick: ($("gNick").value || "").trim().slice(0, 24), av: avSel });
     const rooms = saveRooms(roomList);

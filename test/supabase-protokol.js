@@ -12,6 +12,8 @@ const SUTUN = {
   son_gunler: [['uid', 'uuid'], ['son', 'jsonb'], ['guncellendi', 'timestamptz']],
   ozel_belgeler: [['uid', 'uuid'], ['belge', 'text'], ['veri', 'jsonb'], ['guncellendi', 'timestamptz']],
   oda_uyeleri: [['uid', 'uuid'], ['oda', 'text']],
+  tebrik_ozet: [['uid', 'uuid'], ['toplam', 'int4'], ['gun', 'date'], ['bugun', 'int4']],
+  etkilesimler: [['id', 'int8'], ['alici', 'uuid']],
 };
 
 function ekle(sunucu, { pool, hesaplar, api, AD }) {
@@ -125,8 +127,12 @@ function ekle(sunucu, { pool, hesaplar, api, AD }) {
   async function degisim(table, satirUid, belge) {
     if (!SUTUN[table]) return;
     for (const s of soketler) for (const [konu, k] of s.kanallar) {
-      const ids = k.baglar.filter(x => x.table === table && (!x.filter || x.filter === 'uid=eq.' + satirUid)).map(x => x.id);
+      const ids = k.baglar.filter(x => x.table === table && (!x.filter || x.filter.split('=eq.')[1] === satirUid)).map(x => x.id);
       if (!ids.length || !k.uid) continue;
+      if (table === 'etkilesimler') {                                 // yalnızca "yeni bir şey var" haberi
+        s.yolla(k.joinRef, null, konu, 'postgres_changes', { ids, data: { schema: 'public', table, commit_timestamp: new Date().toISOString(), columns: SUTUN[table].map(([name, type]) => ({ name, type })), errors: null, type: 'INSERT', record: { id: 0, alici: satirUid }, old_record: null } });
+        continue;
+      }
       const filtre = [['uid', satirUid]]; if (table === 'ozel_belgeler' && belge) filtre.push(['belge', belge]);
       const r = await api({ uid: k.uid, kind: 'select', table, cols: SUTUN[table].map(x => x[0]).join(','), filters: filtre, sessiz: true });
       const satir = r.data && r.data[0];

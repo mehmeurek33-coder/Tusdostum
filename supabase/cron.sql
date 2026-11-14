@@ -13,7 +13,8 @@ select cron.schedule('tusdostum-uyari', '* * * * *', $cron$
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-gizli', 'CRON_GIZLI'),
     body := '{}'::jsonb,
     timeout_milliseconds := 20000)
-  where exists (select 1 from public.uyarilar where zaman <= now() + interval '20 seconds');
+  where exists (select 1 from public.uyarilar where zaman <= now() + interval '20 seconds')
+     or exists (select 1 from public.etkilesimler where bildirim_bekliyor);
 $cron$);
 
 -- Denetim: son çalışmaları görmek için

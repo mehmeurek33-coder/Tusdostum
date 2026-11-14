@@ -305,6 +305,162 @@ language sql security definer set search_path = public as $$
   delete from push_abonelikleri where endpoint = any (p_endpointler)
 $$;
 
+-- ---------- Tebrik ve dürtme ----------
+-- Yalnızca ortak kişisel odadakiler arasında. Kim kimi tebrik etti/dürttü yalnızca alan (ve gönderen) görür;
+-- odadakiler yalnızca tebrik sayısını görür. Kayıtlara ve istatistiklere dokunmaz. 7 gün saklanır.
+create table if not exists public.etkilesimler (
+  id bigserial primary key,
+  gonderen uuid references auth.users(id) on delete cascade,   -- boşsa uygulamanın kendi tebriki (günde 5 saat)
+  alici uuid not null references auth.users(id) on delete cascade,
+  tur text not null check (tur in ('tebrik', 'durt')),
+  oda text not null,                                   -- ortak odanın özeti
+  gun date not null,                                   -- Türkiye saatine göre gün
+  zaman timestamptz not null default now(),
+  goruldu boolean not null default false,
+  bildirim_bekliyor boolean not null default false,
+  unique (gonderen, alici, tur, gun)
+);
+alter table public.etkilesimler alter column gonderen drop not null;
+alter table public.etkilesimler drop constraint if exists etkilesimler_sistem_tebrik;
+alter table public.etkilesimler add constraint etkilesimler_sistem_tebrik check (gonderen is not null or tur = 'tebrik');
+create index if not exists etkilesimler_alici on public.etkilesimler (alici, gun);
+create unique index if not exists etkilesimler_sistem on public.etkilesimler (alici, gun) where gonderen is null;   -- günde bir
+alter table public.etkilesimler enable row level security;
+drop policy if exists etk_oku on public.etkilesimler;
+create policy etk_oku on public.etkilesimler for select to authenticated using (alici = auth.uid() or gonderen = auth.uid());
+
+create table if not exists public.tebrik_ozet (
+  uid uuid primary key references auth.users(id) on delete cascade,
+  toplam int not null default 0,
+  gun date,
+  bugun int not null default 0
+);
+alter table public.tebrik_ozet enable row level security;
+drop policy if exists tebrik_oku on public.tebrik_ozet;
+create policy tebrik_oku on public.tebrik_ozet for select to authenticated using (uid = auth.uid() or public.td_ayni_odada(uid));
+
+-- Sunucu ayarları (bildirim işlevinin adresi ve gizli değeri). Politika yok: yalnızca sunucu okur.
+create table if not exists public.sunucu_ayar (ad text primary key, deger text not null);
+alter table public.sunucu_ayar enable row level security;
+
+create or replace function public.td_bugun() returns date
+language sql stable as $$ select (now() at time zone 'Europe/Istanbul')::date $$;
+
+-- Bildirim göndericiyi hemen çağırır (pg_net ve ayarlar varsa; yoksa dakikalık zamanlayıcı gönderir)
+create or replace function public.td_bildirim_tetikle() returns void
+language plpgsql security definer set search_path = public as $$
+declare u text; g text;
+begin
+  select deger into u from sunucu_ayar where ad = 'islev_adresi';
+  select deger into g from sunucu_ayar where ad = 'cron_gizli';
+  if u is null or g is null or not exists (select 1 from pg_extension where extname = 'pg_net') then return; end if;
+  execute 'select net.http_post(url := $1, headers := $2, body := ''{}''::jsonb, timeout_milliseconds := 20000)'
+    using u, jsonb_build_object('Content-Type', 'application/json', 'x-cron-gizli', g);
+exception when others then return;                     -- bildirim gecikse de gönderme işlemi bozulmasın
+end $$;
+
+-- Tebrik ya da dürt gönder. Döner: 'tamam' | 'zaten' | 'ortak_oda_yok' | 'calisiyor' | 'kapali' | 'hak_doldu'
+create or replace function public.td_etkilesim_gonder(p_alici uuid, p_tur text) returns text
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); g date := td_bugun(); o text; v jsonb; calisiyor boolean; bildir boolean; saat int;
+begin
+  if me is null then raise exception 'giriş gerekli'; end if;
+  if exists (select 1 from engelliler where uid = me) then raise exception 'td_engelli'; end if;
+  if p_tur not in ('tebrik', 'durt') then raise exception 'geçersiz tür'; end if;
+  if p_alici is null or p_alici = me then raise exception 'geçersiz alıcı'; end if;
+  select a.oda into o from oda_uyeleri a join oda_uyeleri b on a.oda = b.oda where a.uid = me and b.uid = p_alici limit 1;
+  if o is null then return 'ortak_oda_yok'; end if;
+  if exists (select 1 from etkilesimler where gonderen = me and alici = p_alici and tur = p_tur and gun = g) then return 'zaten'; end if;
+  select veri into v from profiller where uid = p_alici;
+  calisiyor := v is not null and (v -> 'timer' ->> 'runStart') is not null and (v -> 'timer' ->> 'breakStart') is null;
+  if p_tur = 'durt' then
+    if calisiyor then return 'calisiyor'; end if;
+    if coalesce((select (veri ->> 'durtmeKapali')::boolean from ozel_belgeler where uid = p_alici and belge = 'ayar'), false) then return 'kapali'; end if;
+    if (select count(*) from etkilesimler where alici = p_alici and tur = 'durt' and gun = g) >= 2 then return 'hak_doldu'; end if;
+    saat := extract(hour from now() at time zone 'Europe/Istanbul');
+    bildir := saat >= 8 and saat < 23;                 -- 23:00–08:00 arası dürtme bildirimi gitmez
+  else
+    bildir := not calisiyor;                           -- çalışan kişiye bildirim gitmez; molada uygulamada görür
+  end if;
+  begin
+    insert into etkilesimler (gonderen, alici, tur, oda, gun, bildirim_bekliyor) values (me, p_alici, p_tur, o, g, bildir);
+  exception when unique_violation then return 'zaten';
+  end;
+  if p_tur = 'tebrik' then
+    insert into tebrik_ozet as t (uid, toplam, gun, bugun) values (p_alici, 1, g, 1)
+      on conflict (uid) do update set toplam = t.toplam + 1, bugun = case when t.gun = g then t.bugun + 1 else 1 end, gun = g;
+  end if;
+  if bildir then perform td_bildirim_tetikle(); end if;
+  return 'tamam';
+end $$;
+
+-- Günde 5 saat: uygulamanın kendi tebriki (günde bir). Bugünkü kronometreli kayıtlar ve işleyen kronometre
+-- sunucuda ayrıca toplanır; 300 dakikaya ulaşmamışsa verilmez. Döner: 'tamam' | 'zaten' | 'yetersiz'
+create or replace function public.td_hedef_tebrik() returns text
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); g date := td_bugun(); dk numeric := 0; t jsonb; is_ms numeric := 0; simdi numeric; gece numeric; bas numeric;
+begin
+  if me is null then raise exception 'giriş gerekli'; end if;
+  if exists (select 1 from engelliler where uid = me) then raise exception 'td_engelli'; end if;
+  if exists (select 1 from etkilesimler where alici = me and gonderen is null and gun = g) then return 'zaten'; end if;
+  select coalesce(sum(least((e.value ->> 'm')::numeric, 960)), 0) into dk
+    from ozel_belgeler o, jsonb_each(case when jsonb_typeof(o.veri -> 'entries') = 'object' then o.veri -> 'entries' else '{}'::jsonb end) e
+    where o.uid = me and o.belge = 'kron-' || to_char(g, 'YYYY-MM')
+      and jsonb_typeof(e.value) = 'object' and not (e.value ? 'del') and e.value ->> 'd' = g::text
+      and jsonb_typeof(e.value -> 'm') = 'number' and (e.value ->> 'm')::numeric > 0;
+  -- İşleyen kronometrenin bugüne düşen kısmı (uygulamadaki hesapla aynı)
+  select veri -> 'timer' into t from profiller where uid = me;
+  if jsonb_typeof(t) = 'object' and jsonb_typeof(t -> 'st') = 'number' then
+    simdi := extract(epoch from now()) * 1000;
+    gece := extract(epoch from (g::timestamp at time zone 'Europe/Istanbul')) * 1000;
+    bas := (t ->> 'st')::numeric;
+    is_ms := case when jsonb_typeof(t -> 'workMs') = 'number' then greatest((t ->> 'workMs')::numeric, 0) else 0 end
+      + case when jsonb_typeof(t -> 'runStart') = 'number' then least(greatest(simdi - (t ->> 'runStart')::numeric, 0), 3 * 3600000) else 0 end;
+    if bas < gece then is_ms := is_ms * least(1, (simdi - gece) / greatest(simdi - bas, 1)); end if;
+  end if;
+  if least(dk, 960) + floor(is_ms / 60000) < 300 then return 'yetersiz'; end if;
+  begin
+    insert into etkilesimler (gonderen, alici, tur, oda, gun, bildirim_bekliyor) values (null, me, 'tebrik', '', g, false);
+  exception when unique_violation then return 'zaten';
+  end;
+  insert into tebrik_ozet as o (uid, toplam, gun, bugun) values (me, 1, g, 1)
+    on conflict (uid) do update set toplam = o.toplam + 1, bugun = case when o.gun = g then o.bugun + 1 else 1 end, gun = g;
+  return 'tamam';
+end $$;
+
+-- Profil açılınca düğmelerin durumu
+create or replace function public.td_etkilesim_durum(p_alici uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := auth.uid(); g date := td_bugun();
+begin
+  if me is null then return null; end if;
+  return jsonb_build_object(
+    'ortak', exists (select 1 from oda_uyeleri a join oda_uyeleri b on a.oda = b.oda where a.uid = me and b.uid = p_alici),
+    'tebrik', exists (select 1 from etkilesimler where gonderen = me and alici = p_alici and tur = 'tebrik' and gun = g),
+    'durt', exists (select 1 from etkilesimler where gonderen = me and alici = p_alici and tur = 'durt' and gun = g),
+    'durtSayisi', (select count(*) from etkilesimler where alici = p_alici and tur = 'durt' and gun = g),
+    'durtmeKapali', coalesce((select (veri ->> 'durtmeKapali')::boolean from ozel_belgeler where uid = p_alici and belge = 'ayar'), false));
+end $$;
+
+create or replace function public.td_etkilesim_goruldu(p_idler bigint[]) returns void
+language sql security definer set search_path = public as $$
+  update etkilesimler set goruldu = true where alici = auth.uid() and id = any (p_idler)
+$$;
+
+-- Bildirim göndericinin aldığı bekleyen tebrik/dürtme bildirimleri (yalnızca service_role)
+create or replace function public.td_bekleyen_etkilesimler() returns table (id bigint, tur text, gonderen_ad text, oda_ad text, endpoint text, p256dh text, auth text)
+language sql security definer set search_path = public as $$
+  with d as (
+    update etkilesimler e set bildirim_bekliyor = false
+    where e.bildirim_bekliyor and e.zaman > now() - interval '30 minutes'
+    returning e.id, e.gonderen, e.alici, e.tur, e.oda)
+  select d.id, d.tur,
+    coalesce(nullif(btrim(p.veri ->> 'nick'), ''), 'Bir arkadaşın'),
+    (select o.etiketler[array_position(o.ozetler, d.oda)] from odalarim o where o.uid = d.alici),
+    a.endpoint, a.p256dh, a.auth
+  from d join push_abonelikleri a on a.uid = d.alici left join profiller p on p.uid = d.gonderen
+$$;
+
 -- ---------- Günlük yedek ----------
 -- Her gece özel kayıtların bir kopyası alınır; son 14 gün tutulur. Yalnızca sunucu (SQL Editor) okur.
 create table if not exists public.ozel_yedek (
@@ -324,6 +480,7 @@ begin
     on conflict (gun, uid, belge) do update set veri = excluded.veri;
   get diagnostics n = row_count;
   delete from ozel_yedek where gun < current_date - 14;
+  delete from etkilesimler where gun < td_bugun() - 7;
   return n;
 end $$;
 -- Bir kişinin kayıtlarını belirli bir günün yedeğinden geri getirir (yalnızca SQL Editor'dan, elle).
@@ -347,6 +504,12 @@ grant all on all tables in schema public to service_role;
 
 revoke all on function public.td_vadesi_gelenler() from public, anon, authenticated;
 revoke all on function public.td_gunluk_yedek(), public.td_yedekten_geri_al(uuid, date) from public, anon, authenticated;
+revoke all on function public.td_bekleyen_etkilesimler(), public.td_bildirim_tetikle() from public, anon, authenticated;
+grant execute on function public.td_bekleyen_etkilesimler(), public.td_bildirim_tetikle() to service_role;
+revoke all on function public.td_etkilesim_gonder(uuid, text), public.td_etkilesim_durum(uuid), public.td_etkilesim_goruldu(bigint[]), public.td_hedef_tebrik() from public, anon;
+grant execute on function public.td_etkilesim_gonder(uuid, text), public.td_etkilesim_durum(uuid), public.td_etkilesim_goruldu(bigint[]), public.td_hedef_tebrik() to authenticated, service_role;
+grant select on public.etkilesimler, public.tebrik_ozet to authenticated;
+revoke all on public.sunucu_ayar from public, anon, authenticated;
 grant execute on function public.td_gunluk_yedek(), public.td_yedekten_geri_al(uuid, date) to service_role;
 revoke all on function public.td_ozel_birlestir(text, jsonb) from public, anon;
 grant execute on function public.td_ozel_birlestir(text, jsonb) to authenticated, service_role;
@@ -364,7 +527,7 @@ grant execute on function public.td_profil_guncelle(jsonb), public.td_ozel_gunce
 do $$
 declare t text;
 begin
-  foreach t in array array['profiller', 'son_gunler', 'ozel_belgeler', 'oda_uyeleri'] loop
+  foreach t in array array['profiller', 'son_gunler', 'ozel_belgeler', 'oda_uyeleri', 'etkilesimler', 'tebrik_ozet'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

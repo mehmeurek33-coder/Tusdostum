@@ -144,6 +144,94 @@ select tdt.yaz('Yedekten geri alma: kaybolan kayıt döner, sonradan eklenen kal
   (select (veri #> '{entries,x1,m}')::int = 10 and (veri #> '{entries,x2,m}')::int = 20 from ozel_belgeler where uid = '11111111-1111-1111-1111-111111111111' and belge = 'elle-2026-01'));
 set role authenticated; set request.jwt.claim.sub = :A;
 
+-- ===== Tebrik ve dürtme =====
+reset role; reset request.jwt.claim.sub;
+insert into auth.users (id, email) values
+  ('44444444-4444-4444-4444-444444444444','d@x'), ('55555555-5555-5555-5555-555555555555','e@x'),
+  ('66666666-6666-6666-6666-666666666666','f@x'), ('77777777-7777-7777-7777-777777777777','g@x'),
+  ('88888888-8888-8888-8888-888888888888','h@x') on conflict do nothing;
+set role authenticated;
+set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444'; insert into profiller (uid, veri) values (auth.uid(), '{"nick":"Deniz"}'); select td_odalari_ayarla(array['Etk Odası'], array['etk-odasi']) is not null;
+set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555'; select td_odalari_ayarla(array['Etk Odası'], array['etk-odasi']) is not null;
+set request.jwt.claim.sub = '66666666-6666-6666-6666-666666666666'; insert into profiller (uid, veri) values (auth.uid(), '{"nick":"Fatma"}'); select td_odalari_ayarla(array['etk odası'], array['etk-odasi']) is not null;
+set request.jwt.claim.sub = '88888888-8888-8888-8888-888888888888'; insert into profiller (uid, veri) values (auth.uid(), '{"nick":"Hakan"}'); select td_odalari_ayarla(array['Etk Odası'], array['etk-odasi']) is not null;
+set request.jwt.claim.sub = '77777777-7777-7777-7777-777777777777'; select td_odalari_ayarla(array['Başka'], array['bas_ka-2']) is not null;
+-- Deniz → Emre (Emre'nin profili yok: çalışmıyor sayılır)
+set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select tdt.yaz('Tebrik: ortak odadakine gider', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'tebrik') = 'tamam');
+select tdt.yaz('Tebrik: aynı kişiye günde 1', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'tebrik') = 'zaten');
+select tdt.yaz('Ortak odası olmayana gönderilemez', td_etkilesim_gonder('77777777-7777-7777-7777-777777777777', 'tebrik') = 'ortak_oda_yok');
+select tdt.yaz('Kendine gönderilemez', tdt.reddedilir($$select td_etkilesim_gonder('44444444-4444-4444-4444-444444444444', 'tebrik')$$));
+select tdt.yaz('Geçersiz tür reddedilir', tdt.reddedilir($$select td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'kalp')$$));
+select tdt.yaz('Çalışmayana tebrik: bildirim gidecek', (select bildirim_bekliyor from etkilesimler where gonderen = auth.uid() and tur = 'tebrik' limit 1));
+select tdt.yaz('Etkileşim tablosuna doğrudan yazılamaz', tdt.reddedilir($$insert into etkilesimler (gonderen, alici, tur, oda, gun) values ('44444444-4444-4444-4444-444444444444','55555555-5555-5555-5555-555555555555','tebrik','x', current_date)$$));
+-- Emre çalışmaya başlar
+set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
+insert into profiller (uid, veri) values (auth.uid(), '{"nick":"Emre","timer":{"s":"anatomi","t":"konu","st":1,"runStart":1,"workMs":0,"breakStart":null,"breakMs":0}}');
+set request.jwt.claim.sub = '66666666-6666-6666-6666-666666666666';
+select tdt.yaz('Çalışana tebrik gider', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'tebrik') = 'tamam');
+select tdt.yaz('Çalışana tebrik bildirimi GİTMEZ (molada uygulamada görür)', not (select bildirim_bekliyor from etkilesimler where gonderen = auth.uid() and tur = 'tebrik' limit 1));
+select tdt.yaz('Çalışan dürtülemez', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'durt') = 'calisiyor');
+select tdt.yaz('Oda arkadaşı tebrik sayısını görür (bugün 2, toplam 2)', (select bugun = 2 and toplam = 2 from tebrik_ozet where uid = '55555555-5555-5555-5555-555555555555'));
+select tdt.yaz('Gönderen yalnızca kendi gönderdiğini görür (Deniz''inkini görmez)', (select count(*) from etkilesimler) = 1);
+-- Emre bırakır; dürtme sınırı
+set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
+update profiller set veri = jsonb_set(veri, '{timer}', 'null') where uid = auth.uid();
+set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select tdt.yaz('Çalışmayan dürtülür (1. dürtme)', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'durt') = 'tamam');
+select tdt.yaz('Aynı kişi aynı kişiyi günde 1 kez dürter', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'durt') = 'zaten');
+set request.jwt.claim.sub = '66666666-6666-6666-6666-666666666666';
+select tdt.yaz('2. dürtme (başka kişiden) gider', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'durt') = 'tamam');
+set request.jwt.claim.sub = '88888888-8888-8888-8888-888888888888';
+select tdt.yaz('Bir kişi günde en çok 2 dürtme alır (3. reddedilir)', td_etkilesim_gonder('55555555-5555-5555-5555-555555555555', 'durt') = 'hak_doldu');
+select tdt.yaz('Durum: Hakan için dürtme sayısı 2, kendi tebriği yok', (select (d ->> 'durtSayisi')::int = 2 and not (d ->> 'tebrik')::boolean and (d ->> 'ortak')::boolean from (select td_etkilesim_durum('55555555-5555-5555-5555-555555555555') d) x));
+-- Fatma dürtmeleri kapatır
+set request.jwt.claim.sub = '66666666-6666-6666-6666-666666666666';
+select td_ozel_birlestir('ayar', '{"durtmeKapali":true}') is not null;
+set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select tdt.yaz('Dürtmeleri kapatan dürtülemez', td_etkilesim_gonder('66666666-6666-6666-6666-666666666666', 'durt') = 'kapali');
+select tdt.yaz('Durum: dürtmeleri kapalı görünür', (select (td_etkilesim_durum('66666666-6666-6666-6666-666666666666') ->> 'durtmeKapali')::boolean));
+-- Başka odadaki kişi
+set request.jwt.claim.sub = '77777777-7777-7777-7777-777777777777';
+select tdt.yaz('Başka odadaki kişi tebrik sayısını göremez', (select count(*) from tebrik_ozet where uid = '55555555-5555-5555-5555-555555555555') = 0);
+select tdt.yaz('Başka odadaki kişi etkileşimleri göremez', (select count(*) from etkilesimler) = 0);
+-- Alıcı: gelenleri görür ve görüldü yapar
+set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
+select tdt.yaz('Alıcı gelen 4 etkileşimi görür (2 tebrik, 2 dürtme)', (select count(*) from etkilesimler where alici = auth.uid()) = 4);
+select td_etkilesim_goruldu((select array_agg(id) from etkilesimler where alici = auth.uid() and tur = 'tebrik')) is null;
+select tdt.yaz('Görüldü işaretlenir', (select count(*) from etkilesimler where alici = auth.uid() and goruldu) = 2);
+select td_abonelik_kaydet('https://push.example/emre', 'p256', 'auth') is null;
+select tdt.yaz('Kullanıcı bildirim kuyruğunu çağıramaz', tdt.reddedilir($$select * from td_bekleyen_etkilesimler()$$));
+reset request.jwt.claim.sub; set role service_role;
+create temp table eb as select * from td_bekleyen_etkilesimler();
+select tdt.yaz('Bildirim kuyruğu: gönderen adı ve alıcının oda adıyla, yalnızca bildirimi bekleyenler',
+  (select count(*) >= 2 and bool_and(gonderen_ad in ('Deniz', 'Fatma')) and bool_and(oda_ad = 'Etk Odası') and bool_and(endpoint = 'https://push.example/emre') from eb)
+  and not exists (select 1 from eb where tur = 'tebrik' and gonderen_ad = 'Fatma'));
+select tdt.yaz('Gönderilen bildirim kuyruktan düşer', (select count(*) from td_bekleyen_etkilesimler()) = 0);
+set role authenticated; set request.jwt.claim.sub = :A;
+
+-- ===== Günde 5 saat: uygulamanın tebriki =====
+set request.jwt.claim.sub = '77777777-7777-7777-7777-777777777777';
+insert into profiller (uid, veri) values ('77777777-7777-7777-7777-777777777777', '{"nick":"Gül"}') on conflict do nothing;
+select td_ozel_birlestir('kron-' || to_char(td_bugun(), 'YYYY-MM'), jsonb_build_object('entries', jsonb_build_object(
+  'h1', jsonb_build_object('d', td_bugun()::text, 'm', 120, 's', 'anatomi', 't', 'konu'),
+  'h2', jsonb_build_object('d', td_bugun()::text, 'm', 80, 's', 'anatomi', 't', 'konu'),
+  'h3', jsonb_build_object('d', (td_bugun() - 1)::text, 'm', 400, 's', 'anatomi', 't', 'konu'),
+  'h4', jsonb_build_object('d', td_bugun()::text, 'm', 200, 's', 'anatomi', 't', 'konu', 'del', 1),
+  'h5', jsonb_build_object('d', td_bugun()::text, 'm', 'çok', 's', 'anatomi', 't', 'konu')))) is not null;
+select tdt.yaz('5 saat: 200 dk (dünkü, silinen ve bozuk kayıt sayılmaz) → verilmez', td_hedef_tebrik() = 'yetersiz' and not exists (select 1 from etkilesimler where alici = auth.uid()));
+select td_profil_guncelle(jsonb_build_object('timer', jsonb_build_object('s', 'anatomi', 't', 'konu', 'st', extract(epoch from now()) * 1000 - 60 * 60000, 'runStart', extract(epoch from now()) * 1000 - 60 * 60000, 'workMs', 0))) is not null;
+select tdt.yaz('5 saat: 200 dk + işleyen kronometrede 60 dk → yine verilmez', td_hedef_tebrik() = 'yetersiz');
+select td_profil_guncelle(jsonb_build_object('timer', jsonb_build_object('s', 'anatomi', 't', 'konu', 'st', extract(epoch from now()) * 1000 - 130 * 60000, 'runStart', extract(epoch from now()) * 1000 - 30 * 60000, 'workMs', 72 * 60000))) is not null;
+select tdt.yaz('5 saat: 200 dk + kronometrede 102 dk → tebrik verilir', td_hedef_tebrik() = 'tamam');
+select tdt.yaz('5 saat: aynı gün ikinci kez verilmez', td_hedef_tebrik() = 'zaten' and (select count(*) from etkilesimler where alici = auth.uid()) = 1);
+select tdt.yaz('5 saat tebriki: gönderen yok, bildirim kuyruğuna girmez, toplam ve bugün 1 artar',
+  (select gonderen is null and tur = 'tebrik' and not bildirim_bekliyor from etkilesimler where alici = auth.uid())
+  and (select toplam = 1 and bugun = 1 from tebrik_ozet where uid = auth.uid()));
+select tdt.yaz('5 saat tebriki kayıtlara dokunmaz', (select count(*) from jsonb_object_keys((select veri -> 'entries' from ozel_belgeler where uid = auth.uid() and belge = 'kron-' || to_char(td_bugun(), 'YYYY-MM')))) = 5);
+select tdt.yaz('Uygulama tebriki elle eklenemez', tdt.reddedilir($$insert into etkilesimler (gonderen, alici, tur, oda, gun) values (null, '77777777-7777-7777-7777-777777777777', 'tebrik', '', td_bugun())$$));
+set role authenticated; set request.jwt.claim.sub = :A;
+
 -- ===== Boyut sınırı =====
 select tdt.yaz('Aşırı büyük profil reddedilir',
   tdt.reddedilir($$update profiller set veri = jsonb_build_object('x', (select string_agg(md5(i::text), '') from generate_series(1, 4000) i)) where uid = auth.uid()$$));

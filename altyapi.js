@@ -256,12 +256,46 @@
   function tekrarDene(tablo) { deneme[tablo] = Math.min((deneme[tablo] || 0) + 1, 6); cekSonra(tablo, 1000 * 2 ** deneme[tablo]); }
   function hepsiniCek() { TABLOLAR.forEach(t => cek(t).then(() => { deneme[t] = 0; }).catch(() => tekrarDene(t))); }
 
+  // ---------- Tebrik ve dürtme ----------
+  const tebrikler = new Map(), etkDinleyen = [];
+  const etkHaber = () => etkDinleyen.forEach(f => { try { f(); } catch {} });
+  const bugunTR = () => { try { return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Istanbul" }); } catch { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; } };
+  async function cekTebrik() {
+    if (!sb || !uid) return;
+    const { data, error } = await sb.from("tebrik_ozet").select("uid,toplam,gun,bugun");
+    if (error) return;
+    tebrikler.clear(); (data || []).forEach(r => tebrikler.set(r.uid, r));
+    etkHaber();
+  }
+  let tebrikT = null;
+  const cekTebrikSonra = () => { clearTimeout(tebrikT); tebrikT = setTimeout(() => cekTebrik().catch(() => {}), 300); };
+  const etkilesim = {
+    sayi(u) { const t = tebrikler.get(u); return t ? { toplam: t.toplam || 0, bugun: String(t.gun).slice(0, 10) === bugunTR() ? (t.bugun || 0) : 0 } : { toplam: 0, bugun: 0 }; },
+    async gonder(alici, tur) {
+      const { data, error } = await sb.rpc("td_etkilesim_gonder", { p_alici: alici, p_tur: tur });
+      if (error) throw cevir(error);
+      cekTebrikSonra();
+      return data;
+    },
+    async durum(alici) { const { data, error } = await sb.rpc("td_etkilesim_durum", { p_alici: alici }); if (error) throw cevir(error); return data; },
+    async gelenler() {
+      const { data, error } = await sb.from("etkilesimler").select("id,gonderen,tur,oda,gun,zaman,goruldu").eq("alici", uid).eq("gun", bugunTR());
+      if (error) throw cevir(error);
+      return (data || []).sort((a, b) => String(a.zaman).localeCompare(String(b.zaman)));
+    },
+    async hedef() { const { data, error } = await sb.rpc("td_hedef_tebrik"); if (error) throw cevir(error); cekTebrikSonra(); return data; },
+    async goruldu(ids) { if (!ids.length) return; const { error } = await sb.rpc("td_etkilesim_goruldu", { p_idler: ids }); if (error) throw cevir(error); },
+    odaAdi(ozet) { const i = odalarim.ozetler.indexOf(ozet); return i >= 0 ? odalarim.etiketler[i] : ""; },
+    degisince(f) { etkDinleyen.push(f); },
+  };
+
   let kanal = null, basladi = false;
   function baslat() {
     if (basladi || !sb || !uid) return;
     basladi = true;
     hepsiniCek();
     gonder();                                                       // önceki açılıştan kalan bekleyen kayıtlar
+    cekTebrik().catch(() => {});
     kanal = sb.channel("td-veri-" + uid)
       .on("postgres_changes", { event: "*", schema: "public", table: "profiller" }, p => {
         const r = p.eventType === "DELETE" ? p.old : p.new;
@@ -277,7 +311,9 @@
         else if (r.uid !== uid || !bekleyenYol["logs/" + uid]) son.set(r.uid, r.son || []);
         yay("ortak");
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "oda_uyeleri" }, () => { cekSonra("oda_uyeleri"); cekSonra("son_gunler", 400); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "oda_uyeleri" }, () => { cekSonra("oda_uyeleri"); cekSonra("son_gunler", 400); cekTebrikSonra(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "tebrik_ozet" }, cekTebrikSonra)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "etkilesimler", filter: "alici=eq." + uid }, () => { cekTebrikSonra(); etkHaber(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "ozel_belgeler", filter: "uid=eq." + uid }, p => {
         const r = p.eventType === "DELETE" ? p.old : p.new;
         if (!r || !r.belge) { cekSonra("ozel_belgeler"); return; }
@@ -291,7 +327,8 @@
     window.addEventListener("online", () => { hepsiniCek(); setTimeout(yenidenEsitle, 1500); });
     document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(yenidenEsitle, 1500); });
     setInterval(yenidenEsitle, 30000);
-    setInterval(() => { if (!document.hidden) ["profiller", "son_gunler", "oda_uyeleri"].forEach(t => cekSonra(t, 0)); }, 90000);
+    setInterval(() => { if (!document.hidden) { ["profiller", "son_gunler", "oda_uyeleri"].forEach(t => cekSonra(t, 0)); cekTebrikSonra(); } }, 90000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) cekTebrikSonra(); });
   }
 
   let esitlenecek = false;
@@ -554,6 +591,7 @@
     kurtarmaOlunca(f) { kurtarmaDinleyen.push(f); },
     indirme: downloads,
     guncelleme,
+    etkilesim,
     odaKodu: null,                                                  // uygulama açılışta kendi oda kodu işlevini buraya bağlar
     yenidenEsitle: null,                                            // uygulama: bağlantı gelince ortak profili yeniden gönderir
     giden: {

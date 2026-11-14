@@ -25,7 +25,7 @@
           sonOlay = r.n;
           for (const e of r.events) for (const k of kanallar) for (const d of k.degisim) {
             if (d.filtre.table !== e.table) continue;
-            if (d.filtre.filter && d.filtre.filter !== "uid=eq." + e.uid) continue;
+            if (d.filtre.filter && d.filtre.filter.split("=eq.")[1] !== e.uid) continue;
             d.cb({ eventType: "UPDATE", new: {}, old: {} });                 // satır verilmez → altyapı yeniden okur
           }
           for (const k of kanallar) if (k.varlik.length) {

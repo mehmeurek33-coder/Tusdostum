@@ -104,9 +104,24 @@ export async function calistir(env, fetchFn = fetch) {
       if (g.oldu) sonuc.gonderilen++; else { sonuc.basarisiz++; if (g.olu) olu.push(s.endpoint); }
     } catch (_e) { sonuc.basarisiz++; }
   }));
-  if (olu.length) { await rpc("td_olu_abonelikleri_sil", { p_endpointler: olu }); sonuc.silinen = olu.length; }
+  // Tebrik ve dürtme bildirimleri (yalnızca ortak odadakilerden; çalışan kişiye tebrik bildirimi zaten kuyruğa girmez)
+  const e = await rpc("td_bekleyen_etkilesimler");
+  if (e.ok) {
+    const etk = await e.json().catch(() => []);                    // beklenmedik yanıtta mola uyarıları yine gitsin
+    await Promise.all((Array.isArray(etk) ? etk : []).map(async (s) => {
+      const m = ETKILESIM_METIN(s);
+      try {
+        const g = await pushGonder(s, JSON.stringify({ baslik: m, govde: "", etiket: `td-${s.tur}-${s.id}`, url: "./" }), env.vapid, fetchFn);
+        if (g.oldu) sonuc.gonderilen++; else { sonuc.basarisiz++; if (g.olu) olu.push(s.endpoint); }
+      } catch (_e) { sonuc.basarisiz++; }
+    }));
+  }
+  if (olu.length) { await rpc("td_olu_abonelikleri_sil", { p_endpointler: [...new Set(olu)] }); sonuc.silinen = new Set(olu).size; }
   return sonuc;
 }
+export const ETKILESIM_METIN = (s) => s.tur === "tebrik"
+  ? `👏 ${s.gonderen_ad || "Bir arkadaşın"} seni tebrik etti`
+  : `👋 ${s.gonderen_ad || "Bir arkadaşın"} seni dürttü${s.oda_ad ? " · " + s.oda_ad : ""}`;
 
 // Sunucu anahtarı: elle verilen SERVIS_ANAHTARI → Supabase'in sağladığı yeni tür (SUPABASE_SECRET_KEYS) → eski tür
 export function sunucuAnahtari(oku) {
