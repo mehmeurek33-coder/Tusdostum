@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="c12bfe3cb5b3">
+<meta name="td-surum" content="341bd254367e">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -211,7 +211,7 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 .side-note { font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 8px; }
 .exam { display: flex; align-items: center; gap: 14px; }
 .hk { position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px; min-height: 76px; padding-block: 12px; }
-.hk .dolgu { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); transition: width .6s ease; }
+.hk .dolgu { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--accent) 38%, transparent); }
 .hk > *:not(.dolgu) { position: relative; }
 .hk .big { font-family: var(--f-display); font-size: 26px; font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hk .big small { font-size: 13px; margin-left: 4px; font-weight: 600; }
@@ -1008,6 +1008,8 @@ const pct = (c, q) => (q ? Math.round((c / q) * 100) : null);
 // Günlük süre hedefi "Hedef ve molalar" penceresinden seçilir (3–12 saat ya da kapalı); kişi değiştirene kadar korunur
 const HEDEF_SAAT = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const hedefAcik = () => !(S.settings || {}).hedefKapali;
+// Hedef kutusunda saat kısaltılmadan yazılır: "7 saat", "1 saat 20 dk", "45 dk"
+function saatYaz(m) { m = Math.round(m || 0); const h = Math.floor(m / 60), r = m % 60; return h ? (r ? `${h} saat ${r} dk` : `${h} saat`) : `${r} dk`; }
 function duzenMetni() {
   const w = typeof workWarnMin === "function" ? workWarnMin() : 0, m = breakWarnMin();
   return w && m ? `${w} dk'da ${m} dk mola` : w ? `${w} dk'da bir mola` : m ? `Mola ${m} dk` : "Mola uyarısı kapalı";
@@ -2180,7 +2182,7 @@ function renderToday() {
     const yapilan = today.dk + live, kalan = g.dk - yapilan, oran = Math.min(100, Math.round((yapilan / g.dk) * 100));
     hedefHTML = `<div class="panel hk${kalan <= 0 ? " tamam" : ""}"><span class="dolgu" style="width:${oran}%"></span>
       ${kalan > 0 ? `<div class="big">${Math.floor(kalan / 60)}:${pad(kalan % 60)}<small>kaldı</small></div>` : `<div class="big ok" aria-hidden="true">✓</div>`}
-      <div class="sag"><div class="eyebrow">Hedef ${esc(fmtMin(g.dk))}${kalan <= 0 ? " tamam" : ""}</div><div class="alt">${esc(kalan < 0 ? `+${fmtMin(-kalan)} fazladan · ${duzenMetni()}` : duzenMetni())}</div></div>${ayarla}</div>`;
+      <div class="sag"><div class="eyebrow">Hedef ${esc(saatYaz(g.dk))}${kalan <= 0 ? " tamam" : ""}</div><div class="alt">${esc(kalan < 0 ? `+${saatYaz(-kalan)} fazladan · ${duzenMetni()}` : duzenMetni())}</div></div>${ayarla}</div>`;
   }
   setHTML($("todaySide"), `
     ${hedefHTML}

@@ -33,7 +33,7 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   let k = await kutu();
   ok('Kronometrede zil yok', !(await p.$('#timerCard .bell')));
   ok('Hedef kutusu kronometrenin altında, "Bugün" kartının üstünde', await p.evaluate(() => { const k = document.querySelector('.hk'), t = document.querySelector('#timerCard'), bg = [...document.querySelectorAll('#todaySide .panel')].find(x => /Bugün/.test(x.querySelector('h2') ? x.querySelector('h2').textContent : '')); return k.getBoundingClientRect().top > t.getBoundingClientRect().bottom && k.getBoundingClientRect().bottom < bg.getBoundingClientRect().top; }));
-  ok('Varsayılan hedef 4 sa: "1:45 kaldı", kutu %56 dolu, yüzde yazmıyor', k && /1:45\s*kaldı/.test(k.metin) && /Hedef 4 sa/.test(k.metin) && k.dolu === '56%' && !/%/.test(k.metin), JSON.stringify(k));
+  ok('Varsayılan hedef 4 saat: "1:45 kaldı", kutu %56 dolu, yüzde yazmıyor', k && /1:45\s*kaldı/.test(k.metin) && /Hedef 4 saat/.test(k.metin) && k.dolu === '56%' && !/%/.test(k.metin), JSON.stringify(k));
   // 2) Pencere: seçenekler
   await pencere();
   const sec1 = await p.evaluate(() => Object.fromEntries([...document.querySelectorAll('#alForm [data-chips]')].map(c => [c.dataset.chips, [...c.querySelectorAll('button')].map(x => x.textContent.trim())])));
@@ -44,7 +44,7 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   // 3) 7 sa, 45 dk'da 15 dk mola
   await sec('goal', 420); await sec('workWarn', 45); await sec('breakWarn', 15); await kapat();
   k = await kutu();
-  ok('7 sa seçilince: "4:45 kaldı", "Hedef 7 sa", "45 dk\'da 15 dk mola"', /4:45\s*kaldı/.test(k.metin) && /Hedef 7 sa/.test(k.metin) && /45 dk'da 15 dk mola/.test(k.metin) && k.dolu === '32%', JSON.stringify(k));
+  ok('7 sa seçilince: "4:45 kaldı", "Hedef 7 saat", "45 dk\'da 15 dk mola"', /4:45\s*kaldı/.test(k.metin) && /Hedef 7 saat/.test(k.metin) && /45 dk'da 15 dk mola/.test(k.metin) && k.dolu === '32%', JSON.stringify(k));
   let a = await ayarlar();
   ok('Seçimler kaydedildi (goalMin 420, workWarn 45, breakWarn 15)', a.goalMin === 420 && a.workWarn === 45 && a.breakWarn === 15 && !a.hedefKapali, JSON.stringify(a));
   ok('"Bugün" kartında "Hedef 7 sa"', (await p.textContent('#todaySide')).includes('Hedef 7 sa'));
@@ -52,7 +52,7 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   // 4) Kalıcılık: yeniden açınca aynı
   await p.reload(); await bekle(900);
   k = await kutu();
-  ok('Uygulama yeniden açılınca seçimler korunuyor', /Hedef 7 sa/.test(k.metin) && /45 dk'da 15 dk mola/.test(k.metin), JSON.stringify(k));
+  ok('Uygulama yeniden açılınca seçimler korunuyor', /Hedef 7 saat/.test(k.metin) && /45 dk'da 15 dk mola/.test(k.metin), JSON.stringify(k));
   // 5) Kapalı
   await pencere(); await sec('goal', 0); await kapat();
   k = await kutu();
@@ -64,11 +64,11 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   await pencere();
   ok('Pencerede "Kapalı" seçili görünüyor', await p.$eval('[data-chips="goal"] button[data-v="0"]', e => e.getAttribute('aria-checked') === 'true'));
   await sec('goal', 420); await kapat();
-  ok('Yeniden açınca hedef 7 sa', /Hedef 7 sa/.test((await kutu()).metin));
+  ok('Yeniden açınca hedef 7 saat', /Hedef 7 saat/.test((await kutu()).metin));
   // 6) Hedef tamam
   await kur({ goalMin: 180 }, 200); await p.reload(); await bekle(900);
   k = await kutu();
-  ok('Hedef dolunca: ✓, "Hedef 3 sa tamam", "+20 dk fazladan", kutu tam dolu', k.tamam && /✓/.test(k.metin) && /Hedef 3 sa tamam/.test(k.metin) && /\+20 dk fazladan/.test(k.metin) && k.dolu === '100%', JSON.stringify(k));
+  ok('Hedef dolunca: ✓, "Hedef 3 saat tamam", "+20 dk fazladan", kutu tam dolu', k.tamam && /✓/.test(k.metin) && /Hedef 3 saat tamam/.test(k.metin) && /\+20 dk fazladan/.test(k.metin) && k.dolu === '100%', JSON.stringify(k));
   // 7) Ayarlar'dan süre hedefi ve mola uyarısı kalktı
   await p.click('#settingsBtn'); await p.waitForSelector('#setForm');
   const ay = (await p.textContent('#setForm')).replace(/\s+/g, ' ');
