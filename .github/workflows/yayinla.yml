@@ -31,7 +31,7 @@ jobs:
       - name: Yalnızca uygulama dosyalarını ayır
         run: |
           mkdir _site
-          cp -r index.html config.js altyapi.js sw.js manifest.webmanifest anahtar.html vendor icons _site/
+          cp -r index.html config.js altyapi.js sw.js manifest.webmanifest anahtar.html vendor icons ses _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

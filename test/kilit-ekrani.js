@@ -14,21 +14,21 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   await ctx.addInitScript(() => {
     try { Object.defineProperty(window, 'TUSDOSTUM_AYAR', { get: () => ({}), set: () => {}, configurable: false }); } catch {}
     // mediaSession çağrılarını kaydet
-    window.__ms = { pos: null, handlers: {}, oynayan: 0 };
+    window.__ms = { pos: null, handlers: {}, oynayan: 0, ogeler: new Set() };
     const ms = navigator.mediaSession;
     const sp = ms.setPositionState && ms.setPositionState.bind(ms);
     ms.setPositionState = st => { window.__ms.pos = st; if (sp) try { sp(st); } catch {} };
     const sa = ms.setActionHandler.bind(ms);
     ms.setActionHandler = (a, h) => { window.__ms.handlers[a] = h; try { sa(a, h); } catch {} };
     const play = HTMLMediaElement.prototype.play;
-    HTMLMediaElement.prototype.play = function () { window.__ms.oynayan++; window.__ms.el = this; return play.call(this); };
+    HTMLMediaElement.prototype.play = function () { window.__ms.oynayan++; window.__ms.ogeler.add(this); window.__ms.el = this; return play.call(this); };
   });
   const p = await ctx.newPage();
   const hatalar = []; p.on('pageerror', e => hatalar.push(e.message));
   await p.goto(F);
   await p.evaluate(() => { localStorage.clear(); localStorage.setItem('tusdostum.v3', JSON.stringify({ root: { nick: 'K' }, kron: {}, manual: {}, settings: {}, denemeler: {} })); localStorage.setItem('tusdostum.pref', JSON.stringify({ welcomed: true })); });
   await p.reload(); await bekle(600);
-  const durum = () => p.evaluate(() => ({ baslik: navigator.mediaSession.metadata && navigator.mediaSession.metadata.title, sanatci: navigator.mediaSession.metadata && navigator.mediaSession.metadata.artist, pos: window.__ms.pos, oynayan: window.__ms.oynayan, caliyor: !!(window.__ms.el && !window.__ms.el.paused), dongu: !!(window.__ms.el && window.__ms.el.loop), saat: document.querySelector('#clock').textContent }));
+  const durum = () => p.evaluate(() => ({ baslik: navigator.mediaSession.metadata && navigator.mediaSession.metadata.title, sanatci: navigator.mediaSession.metadata && navigator.mediaSession.metadata.artist, pos: window.__ms.pos, oynayan: window.__ms.oynayan, caliyor: !!(window.__ms.el && !window.__ms.el.paused), ayriSes: window.__ms.ogeler.size, dongu: !!(window.__ms.el && window.__ms.el.loop), src: window.__ms.el ? window.__ms.el.src : '', sesSn: window.__ms.el ? window.__ms.el.currentTime : -1, sesSure: window.__ms.el ? window.__ms.el.duration : -1, saat: document.querySelector('#clock').textContent }));
   const sn = t => { const [h, m, s] = t.split(':').map(Number); return h * 3600 + m * 60 + s; };
 
   // Kapalıyken
@@ -41,7 +41,8 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   ok('Ayarlarda "Kilit ekranında sayaç" seçeneği ve uyarısı var', /Kilit ekranında sayaç/.test(metin) && /müzik durur/.test(metin), metin);
   await p.check('#gLock'); await p.click('#setForm button[type=submit]'); await bekle(1500);
   d = await durum();
-  ok('Açılınca sessiz kayıt döngüde çalıyor', d.caliyor && d.dongu, JSON.stringify(d));
+  ok('Açılınca 12 saatlik sessiz kayıt çalıyor (döngü değil)', d.caliyor && !d.dongu && /ses\/sessiz-12sa\.m4a$/.test(d.src) && Math.round(d.sesSure) === 43200, JSON.stringify(d));
+  ok('Sesin kendi geçen süresi = kronometrenin gösterdiği süre (kilit ekranı bunu gösterir)', Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify(d));
   ok('Kilit ekranı bilgisi: "Anatomi · Konu" — TusDostum', d.baslik === 'Anatomi · Konu' && d.sanatci === 'TusDostum', JSON.stringify(d));
   ok('Kilit ekranındaki süre kronometreyle aynı', d.pos && Math.abs(d.pos.position - sn(d.saat)) <= 1 && d.pos.playbackRate === 1 && d.pos.duration > d.pos.position, JSON.stringify(d));
   // Kilit ekranından "duraklat" → kronometre durmamalı
@@ -53,7 +54,8 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   await p.click('[data-act="pause"]'); await bekle(1500);
   d = await durum();
   ok('Molada kilit ekranı: "Mola · Anatomi", süre molanın süresi', d.baslik === 'Mola · Anatomi' && Math.abs(d.pos.position - sn(d.saat)) <= 1, JSON.stringify(d));
-  ok('Mola uyarısı için ayrı ses kaydı başlatılmadı (tek ses)', d.oynayan <= 2, JSON.stringify(d));
+  ok('Molada sesin geçen süresi de molanın süresine atladı', Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify(d));
+  ok('Mola uyarısı için ayrı ses kaydı başlatılmadı (tek ses)', d.ayriSes === 1, JSON.stringify(d));
   await p.click('[data-act="resume"]'); await bekle(600);
   d = await durum();
   ok('Çalışmaya dönünce kilit ekranı yeniden "Anatomi · Konu"', d.baslik === 'Anatomi · Konu', JSON.stringify(d));
@@ -64,6 +66,11 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   await p.click('#timerCard h2'); await bekle(800);
   d = await durum();
   ok('İlk dokunuşta kilit ekranı sayacı geri geliyor', d.caliyor && d.baslik === 'Anatomi · Konu', JSON.stringify(d));
+  // Uzun oturum: kronometre 2 sa 15 dk gösterirken ses de 2:15'ten çalar
+  await p.evaluate(() => { const v = JSON.parse(localStorage.getItem('tusdostum.v3')); const n = Date.now(); v.root.timer = { s: 'dahiliye', t: 'soru', st: n - 3 * 3600e3, runStart: n - 45 * 60000, workMs: 90 * 60000, breakStart: null, breakMs: 20 * 60000, bn: 1 }; localStorage.setItem('tusdostum.v3', JSON.stringify(v)); });
+  await p.reload(); await bekle(800); await p.click('#timerCard h2'); await bekle(1500);
+  d = await durum();
+  ok('Uzun oturumda (2 sa 15 dk) kilit ekranı sayacı da 2:15:xx\'ten ilerliyor', sn(d.saat) >= 8100 && Math.abs(d.sesSn - sn(d.saat)) <= 1.6 && d.baslik === 'Dahiliye · Soru', JSON.stringify(d));
   // Sıfırla → durur
   await p.click('[data-act="reset"]'); await p.click('[data-act="reset-yes"]'); await bekle(600);
   d = await durum();

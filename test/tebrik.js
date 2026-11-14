@@ -180,8 +180,33 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     ok('Odada B\'nin adının yanında: "👏 2"', cip2 === '👏 2', cip2);
     zaman.kapat = (Date.now() - zaman.bas) / 1000;
     await B.click('.tb-anlik'); await bekle(300);
+    ok('Ses açılışta çaldıysa kapatma dokunuşu ikinci kez çalmıyor', await B.evaluate(() => window.__osc) === 6, String(await B.evaluate(() => window.__osc)));
     await B.reload(); await bekle(3500);
     ok('5 saat tebriki aynı gün ikinci kez verilmiyor ve gösterilmiyor', (await etk()).filter(x => !x.gonderen).length === 1 && !(await anlik(B)));
+
+    // ---------- 6c. Uygulama yeni açılınca (iPhone sesi ilk dokunuşa kadar açmaz): ses dokunuşla gelir ----------
+    await B.context().addInitScript(() => {
+      if (sessionStorage.getItem('__iphone') !== '1') return;
+      window.__dokundu = false; window.__osc = 0;
+      document.addEventListener('click', () => { window.__dokundu = true; }, true);
+      const P = AudioContext.prototype, durum = Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, 'state').get, ac = P.resume, osc = BaseAudioContext.prototype.createOscillator;
+      Object.defineProperty(P, 'state', { configurable: true, get() { return window.__dokundu ? durum.call(this) : 'suspended'; } });
+      P.resume = function () { return window.__dokundu ? ac.call(this) : new Promise(() => {}); };     // iPhone gibi: dokunuşa kadar askıda
+      P.createOscillator = function () { window.__osc++; return osc.call(this); };
+    });
+    await B.evaluate(() => sessionStorage.setItem('__iphone', '1'));
+    await S.sql(`insert into etkilesimler (gonderen, alici, tur, oda, gun) values ($1, $2, 'tebrik', '', (select td_bugun()))`, [uC, uB]);
+    await B.reload();
+    const soguk = await anlikBekle(B, 6000);
+    await bekle(700);
+    const oscAcilis = await B.evaluate(() => window.__osc);
+    ok('Yeni açılışta tebrik penceresi çıkıyor (iPhone sesi henüz açmadı → ses yok)', /Cem seni tebrik etti/.test(soguk) && oscAcilis === 0, soguk + ' ' + oscAcilis);
+    const t0 = Date.now(); await B.click('.tb-anlik'); await bekle(250);
+    const oscDokunus = await B.evaluate(() => window.__osc), kapandi = !(await anlik(B));
+    ok('Pencereye dokununca tebrik sesi o anda çalıyor ve pencere hemen kapanıyor', oscDokunus === 6 && kapandi, `${oscDokunus} ${kapandi}`);
+    await bekle(600);
+    ok('Ses yalnızca bir kez çaldı', await B.evaluate(() => window.__osc) === 6);
+    await B.evaluate(() => sessionStorage.removeItem('__iphone'));
 
     // ---------- 7. Genel odada tebrik/dürt yok ----------
     const genelde = await A.evaluate(() => { const g = [...document.querySelectorAll('#onlinePanel [data-room]')].find(x => /Genel/.test(x.textContent)); if (g) g.click(); return !!g; });

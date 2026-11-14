@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="b6cd525f9d18">
+<meta name="td-surum" content="6644566f6340">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -1022,9 +1022,10 @@ function beep() {
     });
   } catch {}
 }
-// Tebrik sesi (marimba: iki yumuşak nota). Ses ancak bir dokunuştan sonra açılabildiği için çalamıyorsa sessiz geçer;
-// sonradan (ör. kapatmak için dokununca) gecikmeli çalmaz.
-function tebrikSesi() {
+// Tebrik sesi (marimba: iki yumuşak nota). Telefon sesi yalnızca bir dokunuştan sonra açar. Uygulama yeni açıldığında
+// henüz dokunulmadıysa ses çalamaz; o zaman tebrik penceresine dokunulduğu anda çalar (pencere yine hemen kapanır).
+// Döner: Promise<boolean> — ses çaldı mı. dokunus = true: bir dokunuşun içinden çağrıldı, ses mutlaka çalar.
+function tebrikSesi(dokunus) {
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     const cal = () => {
@@ -1039,11 +1040,19 @@ function tebrikSesi() {
         });
       });
     };
-    if (actx.state === "running") { cal(); return; }
-    const bas = Date.now();
-    actx.resume().then(() => { if (actx.state === "running" && Date.now() - bas < 400) cal(); }).catch(() => {});
-  } catch {}
+    if (dokunus) { if (actx.state !== "running") actx.resume().catch(() => {}); cal(); return Promise.resolve(true); }
+    if (actx.state === "running") { cal(); return Promise.resolve(true); }
+    // izin yoksa açma isteği dokunuşa kadar askıda kalabilir: 400 ms içinde açılmazsa "çalamadı" sayılır, sonradan çalmaz
+    return new Promise(sonuc => {
+      let bitti = false;
+      const bit = v => { if (!bitti) { bitti = true; sonuc(v); } };
+      actx.resume().then(() => { if (!bitti && actx.state === "running") { cal(); bit(true); } else bit(false); }, () => bit(false));
+      setTimeout(() => bit(false), 400);
+    });
+  } catch { return Promise.resolve(false); }
 }
+// Uygulama arka plandan dönünce ses, dokunuş beklemeden yeniden açılmayı dener (telefon izin verirse)
+document.addEventListener("visibilitychange", () => { if (!document.hidden && actx && actx.state !== "running") { try { actx.resume().catch(() => {}); } catch {} } });
 // Her dokunuşta (ses kapalıysa) ses yeniden hazırlanır: iPhone arka plana geçince sesi kapatır. iPhone yalnızca
 // "touchend" ve "click" anında açılmaya izin verir, "pointerdown"da vermez.
 ["touchend", "click"].forEach(ad => document.addEventListener(ad, () => { if (!actx || actx.state !== "running") armSound(); }, { capture: true, passive: true }));
@@ -1088,11 +1097,24 @@ function startBreakAudio() {                                       // yalnızca 
 // Süre aşılınca uyarı 5 dakikada bir tekrarlar (unutulmuş mola için en çok 3 saat)
 const ALERT_EVERY_MS = 5 * 60000, BREAK_ALERT_MAX_MS = 3 * 3600 * 1000;
 // ---------- Kilit ekranında sayaç (deneysel, cihaza özel) ----------
-// Sessiz bir ses kaydı döngüde çalınır; telefonun kilit ekranındaki "Şimdi Çalınan" alanında ders ve kronometre görünür.
-// Bedeli: açıkken başka uygulamada çalan müzik durur. Kronometreye dokunmaz; yalnızca gösterir.
+// 12 saatlik sessiz bir ses kaydı, kronometrenin gösterdiği süreden itibaren çalınır. iPhone kilit ekranındaki
+// "Şimdi Çalınan" alanı sesin geçen süresini gösterdiği için orada uygulamadaki saatle aynı süre canlı ilerler
+// (sayfa uyusa da telefon kendisi sayar). Bedeli: açıkken başka uygulamada çalan müzik durur.
+// Kronometreye dokunmaz; yalnızca gösterir (kulaklık çıkarınca gelen "duraklat" kronometreyi etkilemez).
 const kilitDestek = () => "mediaSession" in navigator && typeof MediaMetadata !== "undefined";
 const kilitAcik = () => !!PREF.kilitSayac && kilitDestek();
-let kilitSes = null, kilitSonBaslik = "";
+let kilitSes = null, kilitSonBaslik = "", kilitBlob = null;
+const KILIT_SES = "ses/sessiz-12sa.m4a", KILIT_SURE = 12 * 3600;
+// Ses kaydı bir kez indirilir ve telefonda saklanır (sonra çevrimdışı da çalışır); hazır değilse doğrudan adresten çalınır
+async function kilitSesHazirla() {
+  if (kilitBlob || !kilitAcik()) return;
+  try {
+    const c = await caches.open("tusdostum-ses");
+    let r = await c.match(KILIT_SES);
+    if (!r) { r = await fetch(KILIT_SES); if (!r.ok) return; try { await c.put(KILIT_SES, r.clone()); } catch {} }
+    kilitBlob = URL.createObjectURL(await r.blob());
+  } catch {}
+}
 function kilitBilgi() {
   const t = S.timer; if (!t || !SUBJ[t.s]) return null;
   const sh = shownTimes(t, Date.now()), brk = onBreak(t);
@@ -1101,6 +1123,9 @@ function kilitBilgi() {
 function kilitGuncelle() {
   if (!kilitSes) return;
   const k = kilitBilgi(); if (!k) { kilitDurdur(); return; }
+  if (k.pos >= KILIT_SURE - 5) { kilitDurdur(); return; }
+  const el = kilitSes.el;
+  try { if (el.readyState >= 1 && Math.abs(el.currentTime - k.pos) > 1.5) el.currentTime = k.pos; } catch {}   // sesin süresi = kronometre
   try {
     if (k.baslik !== kilitSonBaslik) {
       kilitSonBaslik = k.baslik;
@@ -1108,7 +1133,7 @@ function kilitGuncelle() {
       navigator.mediaSession.metadata = new MediaMetadata({ title: k.baslik, artist: "TusDostum", album: k.brk ? "Mola" : "Çalışma", artwork: ikon ? [{ src: ikon, sizes: "180x180", type: "image/png" }] : [] });
     }
     navigator.mediaSession.playbackState = "playing";
-    if (navigator.mediaSession.setPositionState) navigator.mediaSession.setPositionState({ duration: Math.max(k.pos + 60, 16 * 3600), position: k.pos, playbackRate: 1 });
+    if (navigator.mediaSession.setPositionState) navigator.mediaSession.setPositionState({ duration: KILIT_SURE, position: k.pos, playbackRate: 1 });
   } catch {}
 }
 function kilitBaslat() {                                            // yalnızca bir dokunuşun içinden çağrılır
@@ -1116,13 +1141,16 @@ function kilitBaslat() {                                            // yalnızca
   stopBreakAudio();
   if (!kilitSes) {
     try {
-      const url = URL.createObjectURL(makeAlarmWav(10, 0));
-      const el = new Audio(); el.loop = true; el.preload = "auto"; el.src = url;
+      const el = new Audio(); el.preload = "auto"; el.src = kilitBlob || KILIT_SES;
+      el.addEventListener("loadedmetadata", kilitGuncelle);
       el.addEventListener("timeupdate", kilitGuncelle);
-      kilitSes = { el, url }; kilitSonBaslik = "";
+      el.addEventListener("ended", kilitDurdur);
+      kilitSes = { el }; kilitSonBaslik = "";
+      const devam = () => { if (kilitSes) { kilitSes.el.play().catch(() => {}); kilitGuncelle(); } };
       try {
-        navigator.mediaSession.setActionHandler("pause", () => {});     // kilit ekranından duraklatma kronometreyi etkilemez
-        navigator.mediaSession.setActionHandler("play", () => { if (kilitSes) kilitSes.el.play().catch(() => {}); });
+        navigator.mediaSession.setActionHandler("pause", devam);          // kilit ekranından duraklatma kronometreyi etkilemez
+        navigator.mediaSession.setActionHandler("play", devam);
+        ["seekto", "seekbackward", "seekforward"].forEach(a => { try { navigator.mediaSession.setActionHandler(a, () => kilitGuncelle()); } catch {} });
       } catch {}
     } catch { kilitSes = null; return; }
   }
@@ -1131,11 +1159,13 @@ function kilitBaslat() {                                            // yalnızca
 function kilitDurdur() {
   if (!kilitSes) return;
   const s = kilitSes; kilitSes = null; kilitSonBaslik = "";
-  try { s.el.pause(); s.el.removeAttribute("src"); s.el.load(); URL.revokeObjectURL(s.url); } catch {}
-  try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = "none"; navigator.mediaSession.setActionHandler("pause", null); navigator.mediaSession.setActionHandler("play", null); } catch {}
+  try { s.el.pause(); s.el.removeAttribute("src"); s.el.load(); } catch {}
+  try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = "none"; } catch {}
+  ["pause", "play", "seekto", "seekbackward", "seekforward"].forEach(a => { try { navigator.mediaSession.setActionHandler(a, null); } catch {} });
 }
 // Kronometre sürerken uygulama yeniden açıldıysa ilk dokunuşta sayaç geri gelir (ses yalnızca dokunuşla başlatılabilir)
 document.addEventListener("click", () => { if (kilitAcik() && S.timer && !kilitSes) kilitBaslat(); }, true);
+setTimeout(kilitSesHazirla, 3000);
 function breakAlert() {
   const t = S.timer, w = breakWarnMin(); if (!t || !t.breakStart || !w) return;
   const over = curBreak(t) - w * 60000; if (over < 0 || over > BREAK_ALERT_MAX_MS) return;
@@ -2291,9 +2321,13 @@ function tebrikAnlik(adlar, mola, hedef) {
   const baslik = hedef ? "Tebrikler, 5 saati geçtin!" : `${isimler(adlar)} seni tebrik etti`;
   const alt = hedef ? (adlar.length ? `${isimler(adlar)} de seni tebrik etti` : "") : mola ? (adlar.length > 1 ? "Çalışırken gönderdiler" : "Çalışırken gönderdi") : "";
   el.innerHTML = `<span class="kutu" role="dialog" aria-live="polite"><span class="e" aria-hidden="true">👏</span><b>${esc(baslik)}</b>${alt ? `<span class="s">${esc(alt)}</span>` : ""}</span>`;
-  el.addEventListener("click", () => { el.classList.add("gidiyor"); setTimeout(() => el.remove(), 150); });
+  let sesBekliyor = false;
+  el.addEventListener("click", () => {
+    if (sesBekliyor) { sesBekliyor = false; tebrikSesi(true); }        // açılışta çalamadıysa: dokunuşla çalar
+    el.classList.add("gidiyor"); setTimeout(() => el.remove(), 150);
+  });
   document.body.appendChild(el);
-  setTimeout(tebrikSesi, 150);                                       // yazı belirirken
+  setTimeout(() => tebrikSesi().then(caldi => { if (!caldi && el.isConnected) sesBekliyor = true; }), 150);   // yazı belirirken
   try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
 }
 function renderEtkKartlar() {
@@ -3299,7 +3333,7 @@ function openSettings() {
     writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "" });
     const before = myRoomKeys().join("|");
     if ($("gDurt") && !!S.settings.durtmeKapali === $("gDurt").checked) writeSettings({ durtmeKapali: !$("gDurt").checked });
-    if ($("gLock")) { PREF.kilitSayac = $("gLock").checked; savePref(); if (PREF.kilitSayac) kilitBaslat(); else kilitDurdur(); }
+    if ($("gLock")) { PREF.kilitSayac = $("gLock").checked; savePref(); if (PREF.kilitSayac) { kilitBaslat(); kilitSesHazirla(); } else kilitDurdur(); }
     writeRoot({ nick: ($("gNick").value || "").trim().slice(0, 24), av: avSel });
     const rooms = saveRooms(roomList);
     const roomsChanged = rooms.map(roomCode).join("|") !== before;
