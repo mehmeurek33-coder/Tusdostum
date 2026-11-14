@@ -74,18 +74,19 @@ degis("  isOwner: false,\n};", "  isOwner: false,\n  lastWorkOver: false,\n  wor
 
 # ---------- Çalışma uyarısı + bildirim zamanlaması ----------
 UYARI = r"""// Çalışma uyarısı: aralıksız çalışma bu kadar dakikayı geçince bir kez uyarılır (0 = kapalı)
-const WORK_WARN_OPTS = [0, 25, 30, 45, 50, 60, 90, 120];
-const workWarnMin = () => { const v = Number((S.settings || {}).workWarn); return WORK_WARN_OPTS.includes(v) ? v : 0; };
+// En az 1 saat: daha kısa seçilmişse (eski ayar) 1 saat sayılır
+const WORK_WARN_OPTS = [0, 60, 90, 120];
+const workWarnMin = () => { const v = Number((S.settings || {}).workWarn); return v > 0 && v < 60 ? 60 : WORK_WARN_OPTS.includes(v) ? v : 0; };
 const runMs = (t, now = Date.now()) => (t && t.runStart ? Math.max(0, now - t.runStart) : 0);
 const workOver = (t, now = Date.now()) => { const w = workWarnMin(); return !!w && runMs(t, now) >= w * 60000 && runMs(t, now) < MAX_RUN_MS; };
 function workAlert() {
   const t = S.timer, w = workWarnMin(); if (!t || !t.runStart || !w) return;
-  const n = Math.floor((runMs(t) - w * 60000) / ALERT_EVERY_MS), key = t.runStart + ":" + n;
-  if (n < 0 || S.workWarned === key) return;
-  S.workWarned = key;
+  // son oturum (son moladan beri) süreyi geçince yalnızca bir kez
+  if (runMs(t) < w * 60000 || S.workWarned === t.runStart) return;
+  S.workWarned = t.runStart;
   beep();
   try { if (navigator.vibrate) navigator.vibrate([250, 120, 250]); } catch {}
-  toast(`Aralıksız çalışman ${w + n * 5} dakikayı geçti.`);
+  toast(`Aralıksız çalışman ${w} dakikayı geçti.`);
 }
 // Ekran kapalıyken bildirim: sunucuya "şu saatte haber ver" listesi bırakılır
 const pushOn = () => { const A = window.TusAltyapi; return !!(A && S.mode === "cloud" && A.bildirim.acik()); };
@@ -103,10 +104,10 @@ function enablePush(after) {
 function syncAlerts() {
   const A = window.TusAltyapi; if (!A || S.mode !== "cloud" || readOnly()) return;
   const t = S.timer, now = Date.now(), out = [];
-  // ilk uyarıdan sonra 5 dakikada bir: mola en çok 3 saat, çalışma 3 saatlik sınıra kadar
+  // mola: ilk uyarıdan sonra 5 dakikada bir (en çok 3 saat); çalışma: yalnızca bir kez
   if (t && onBreak(t)) { const w = breakWarnMin(); if (w) out.push({ tur: "mola", zaman: t.breakStart + w * 60000, dk: w, tekrar: 36 }); }
   else if (t && t.runStart) {
-    const w = workWarnMin(); if (w) out.push({ tur: "calisma", zaman: t.runStart + w * 60000, dk: w, tekrar: Math.max(0, Math.floor((179 - w) / 5)) });
+    const w = workWarnMin(); if (w) out.push({ tur: "calisma", zaman: t.runStart + w * 60000, dk: w, tekrar: 0 });
     out.push({ tur: "sinir", zaman: t.runStart + MAX_RUN_MS, dk: 180 });
   }
   A.bildirim.ayarla(out.filter(x => x.zaman > now + 5000));

@@ -64,10 +64,10 @@ const TIP = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; char
     await A.evaluate(() => { location.hash = 'bugun'; }); await bekle(500);
     await A.click('[data-act="manual"]'); await A.waitForSelector('#entryForm'); await A.fill('#fM', '25'); await A.click('#entryForm button[type=submit]'); await bekle(2000);
     ok('Elle kayıt özel alana yazıldı', sql(`select count(*)::int as n from public.ozel_belgeler where uid = '${ua}' and belge like 'elle-%'`)[0].n === 1);
-    await A.click('#timerCard .bell'); await A.waitForSelector('#alForm'); await A.click('[data-chips="workWarn"] button[data-v="45"]'); await A.click('#alForm [data-close-modal]');
+    await A.click('#timerCard .bell'); await A.waitForSelector('#alForm'); await A.click('[data-chips="workWarn"] button[data-v="60"]'); await A.click('#alForm [data-close-modal]');
     await A.click('[data-act="start"]'); await bekle(2500);
     const u = sql(`select tur, dk from public.uyarilar where uid = '${ua}' order by tur`);
-    ok('Kronometre başlayınca uyarılar sunucuda (45 dk + 3 saat)', u.length === 2 && u[0].tur === 'calisma' && u[0].dk === 45 && u[1].tur === 'sinir', JSON.stringify(u));
+    ok('Kronometre başlayınca uyarılar sunucuda (60 dk + 3 saat)', u.length === 2 && u[0].tur === 'calisma' && u[0].dk === 60 && u[1].tur === 'sinir', JSON.stringify(u));
 
     const B = await kisi();
     await kayit(B, mail('b'), 'Deneme B');

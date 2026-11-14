@@ -116,6 +116,30 @@ select tdt.yaz('Toplam 3 bildirim (sıra 0, 1, 2), sonra kuyruk boş', (select c
 set role authenticated; set request.jwt.claim.sub = :A;
 select td_uyarilari_ayarla('[]'::jsonb) is null;
 select tdt.yaz('Boş liste bekleyen uyarıları siler', (select count(*) from uyarilar where uid = :A) = 0);
+-- Çalışma uyarısı: tekrar yok; gönderilmeden önce son oturum kronometreden yeniden hesaplanır (en az 1 saat)
+create temp table calisma_kur (n int);
+create or replace function pg_temp.calisma_dene(p_run_dk int, p_mola boolean, p_dk int) returns int language plpgsql as $f$
+declare n int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+  perform td_profil_guncelle(jsonb_build_object('timer', jsonb_build_object('s', 'anatomi', 't', 'konu', 'st', extract(epoch from now()) * 1000 - 5 * 3600000,
+    'runStart', case when p_mola then null else extract(epoch from now()) * 1000 - p_run_dk * 60000 end,
+    'breakStart', case when p_mola then extract(epoch from now()) * 1000 - 60000 else null end, 'workMs', 120 * 60000)));
+  perform td_uyarilari_ayarla(jsonb_build_array(jsonb_build_object('tur', 'calisma', 'zaman', (extract(epoch from now()) * 1000)::bigint + 5000, 'dk', p_dk, 'tekrar', 30)));
+  reset role; set local role service_role;
+  select count(*) into n from td_vadesi_gelenler() v where v.tur = 'calisma';
+  reset role; set local role authenticated;
+  return n;
+end $f$;
+select tdt.yaz('Çalışma uyarısı tekrar hakkıyla kaydedilmez', (select pg_temp.calisma_dene(61, false, 60)) = 1 and (select count(*) from uyarilar where uid = :A and tur = 'calisma') = 0);
+select tdt.yaz('Çalışma uyarısı: son oturum 61 dk → gönderilir, tekrar kurulmaz', (select pg_temp.calisma_dene(61, false, 60)) = 1 and (select count(*) from uyarilar where uid = :A) = 0);
+select tdt.yaz('Çalışma uyarısı: son oturum 40 dk (önceki 2 saat sayılmaz) → gönderilmez', (select pg_temp.calisma_dene(40, false, 60)) = 0);
+select tdt.yaz('Çalışma uyarısı: 30 dk seçilmiş olsa da son oturum 45 dk → gönderilmez (en az 1 saat)', (select pg_temp.calisma_dene(45, false, 30)) = 0);
+select tdt.yaz('Çalışma uyarısı: 90 dk seçilmiş, son oturum 70 dk → gönderilmez', (select pg_temp.calisma_dene(70, false, 90)) = 0);
+select tdt.yaz('Çalışma uyarısı: kişi moladaysa gönderilmez', (select pg_temp.calisma_dene(61, true, 60)) = 0);
+set role authenticated; set request.jwt.claim.sub = :A;
+select td_profil_guncelle('{"timer":null}') is not null;
 
 -- ===== Birleştirerek yazma (asla üzerine yazmaz) =====
 set role authenticated; set request.jwt.claim.sub = :A;

@@ -22,7 +22,7 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
     await p.click('#authView [data-mode="kayit"]'); await p.fill('#aMail', `kisi${w}@test.dev`); await p.fill('#aPass', 'gizli123'); await p.click('#aGo');
     await p.waitForSelector('#joinForm', { timeout: 15000 }); await p.fill('#jNick', 'Mehmet'); await p.click('#joinForm button[type=submit]'); await bekle(600);
     await p.click('#timerCard .bell'); await p.waitForSelector('#alForm');
-    await p.click('[data-chips="breakWarn"] button[data-v="10"]'); await p.click('[data-chips="workWarn"] button[data-v="45"]'); await bekle(300);
+    await p.click('[data-chips="breakWarn"] button[data-v="10"]'); await p.click('[data-chips="workWarn"] button[data-v="60"]'); await bekle(300);
     await denet(p, `uyarilar@${w}`);
     if (w === 390) await p.screenshot({ path: path.join(OUT, '3-uyarilar-penceresi.png') });
     await p.click('#alForm [data-close-modal]');

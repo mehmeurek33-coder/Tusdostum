@@ -278,21 +278,29 @@ begin
     if z < now() - interval '1 minute' or z > now() + interval '13 hours' then continue; end if;
     insert into uyarilar (uid, tur, zaman, dk, kalan, sira)
       values (me, x ->> 'tur', z, least(greatest(coalesce((x ->> 'dk')::int, 0), 0), 600),
-              case when (x ->> 'tur') = 'sinir' then 0 else least(greatest(coalesce((x ->> 'tekrar')::int, 0), 0), 40) end, 0)
+              case when (x ->> 'tur') in ('sinir', 'calisma') then 0 else least(greatest(coalesce((x ->> 'tekrar')::int, 0), 0), 40) end, 0)
       on conflict (uid, tur) do update set zaman = excluded.zaman, dk = excluded.dk, kalan = excluded.kalan, sira = 0;
   end loop;
 end $$;
 
 -- Vakti gelen uyarıları alır ve siler; yalnızca bildirim gönderen işlev (service_role) çağırır
 -- Tekrar hakkı kalan uyarı 5 dakika sonrasına yeniden kurulur (kişi çalışmaya dönünce uygulama listeyi siler).
+-- Çalışma uyarısı tekrarlanmaz ve gönderilmeden önce son oturum (son moladan beri) kişinin kronometresinden yeniden
+-- hesaplanır: kronometre çalışmıyorsa ya da son oturum 1 saati (ve kişinin seçtiği süreyi) aşmadıysa gönderilmez.
 drop function if exists public.td_vadesi_gelenler();
 create function public.td_vadesi_gelenler() returns table (uid uuid, tur text, dk int, sira int, endpoint text, p256dh text, auth text)
 language plpgsql security definer set search_path = public as $$
-declare r record;
+declare r record; t jsonb;
 begin
   for r in delete from uyarilar u where u.zaman <= now() + interval '20 seconds'
            returning u.uid, u.tur, u.dk, u.zaman, u.kalan, u.sira loop
     if r.zaman <= now() - interval '15 minutes' then continue; end if;
+    if r.tur = 'calisma' then
+      select p.veri -> 'timer' into t from profiller p where p.uid = r.uid;
+      if t is null or jsonb_typeof(t -> 'runStart') is distinct from 'number' or jsonb_typeof(t -> 'breakStart') = 'number'
+         or extract(epoch from now()) * 1000 - (t ->> 'runStart')::numeric < greatest(r.dk, 60) * 60000 - 30000 then continue; end if;
+      r.kalan := 0;
+    end if;
     if r.kalan > 0 then
       insert into uyarilar (uid, tur, zaman, dk, kalan, sira) values (r.uid, r.tur, now() + interval '5 minutes', r.dk, r.kalan - 1, r.sira + 1)
         on conflict on constraint uyarilar_pkey do nothing;
