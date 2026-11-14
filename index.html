@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="5888940de976">
+<meta name="td-surum" content="db0c742d5d4a">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -269,6 +269,7 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 .kd-hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: -6px; }
 .kd-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, #F5A524 55%, var(--line)); background: var(--surface); margin-bottom: 12px; }
 .kd-card .e { font-size: 26px; line-height: 1; }
+.kd-card.gidiyor { opacity: 0; transform: translateY(-6px); transition: opacity .25s ease, transform .25s ease; pointer-events: none; }
 .kd-card .t { flex: 1; min-width: 0; font-size: 14px; color: var(--muted); }
 .kd-card .t b { color: var(--ink); display: block; font-size: 15px; }
 .kd-card .x { border: 0; background: none; color: var(--muted); font-size: 20px; width: 44px; height: 44px; flex: none; }
@@ -2268,8 +2269,20 @@ function tebrikAnlik(adlar, mola, hedef) {
 }
 function renderEtkKartlar() {
   const el = $("etkKartlar"); if (!el) return;
-  const e = ETK(), kapali = PREF.durtKapat || [];
-  const l = S.timer && !onBreak(S.timer) ? [] : (S.durtler || []).filter(x => !kapali.includes(x.id));   // çalışırken dürtme kartı da görünmez
+  const e = ETK();
+  // Çalışmaya başlayınca dürtme kartı amacına ulaşmıştır: kapanmış sayılır, molada geri gelmez
+  if (S.timer && !onBreak(S.timer)) {
+    const yeni = (S.durtler || []).map(x => x.id).filter(id => !(PREF.durtKapat || []).includes(id));
+    if (yeni.length) { PREF.durtKapat = [...(PREF.durtKapat || []), ...yeni].slice(-40); savePref(); }
+  }
+  const kapali = PREF.durtKapat || [];
+  const l = (S.durtler || []).filter(x => !kapali.includes(x.id));
+  if (!l.length && el.querySelector(".kd-card:not(.gidiyor)")) {          // yumuşakça kaybolur
+    el.querySelectorAll(".kd-card").forEach(c => c.classList.add("gidiyor"));
+    clearTimeout(el.__t); el.__t = setTimeout(() => { if (!el.querySelector(".kd-card:not(.gidiyor)")) setHTML(el, ""); }, 260);
+    return;
+  }
+  if (!l.length && el.querySelector(".kd-card")) return;                  // kayboluyor
   setHTML(el, l.map(x => {
     const oda = e ? e.odaAdi(x.oda) : "", saat = (() => { const d = new Date(x.zaman); return isNaN(d) ? "" : `${pad(d.getHours())}:${pad(d.getMinutes())}`; })();
     return `<div class="kd-card"><span class="e" aria-hidden="true">👋</span><span class="t"><b>${esc(person(x.gonderen).name)} seni dürttü</b>${esc([oda ? oda + " odası" : "", saat].filter(Boolean).join(" · "))}</span>

@@ -96,9 +96,14 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     await cek(B, '2-durt-karti');
     ok('Dürtme, açılır tebrik kartı çıkarmıyor', !(await anlik(B)));
 
-    // ---------- 4. "Başlat" kronometreyi başlatır; çalışırken kart kalkar ----------
-    await B.click('#etkKartlar [data-durt-basla]'); await bekle(800);
-    ok('Karttaki "Başlat" kronometreyi başlattı ve kart kalktı', await B.evaluate(() => !!document.querySelector('[data-act="pause"]')) && !(await B.textContent('#etkKartlar')).trim());
+    // ---------- 4. Kronometre başlayınca kart yumuşakça kaybolur; molada geri gelmez ----------
+    await B.click('.timer-card [data-act="start"], [data-act="start"]'); await bekle(100);
+    const kayiyor = await B.evaluate(() => !!document.querySelector('#etkKartlar .kd-card.gidiyor'));
+    await bekle(700);
+    ok('Kronometre başlayınca dürtme kartı yumuşakça kayboldu', kayiyor && await B.evaluate(() => !!document.querySelector('[data-act="pause"]')) && !(await B.textContent('#etkKartlar')).trim(), String(kayiyor));
+    await B.click('[data-act="pause"]'); await bekle(1500);
+    ok('Mola verince dürtme kartı GERİ GELMEDİ', !(await B.textContent('#etkKartlar')).trim(), await B.textContent('#etkKartlar'));
+    await B.click('[data-act="resume"]'); await bekle(300);
     await bekle(1500);
 
     // ---------- 5. Çalışan kişi tebrik edilir; dikkati dağılmaz ----------
