@@ -53,6 +53,8 @@ html, body { margin: 0; }   /* Claude sayfa iskeleti bunu kendisi veriyordu */
 .btn > svg { width: 18px; height: 18px; flex: none; }
 .bell.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#alForm .field { font-size: 17px; font-weight: 700; color: var(--ink); gap: 10px; }
+#alForm #alNote .hint { font-size: 15px; }
 .chips button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; min-height: 44px; min-width: 52px; padding: 0 14px; font-weight: 600; font-size: 15px; color: var(--ink); }
 .chips button[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .acct { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
