@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="40f18fdae3df">
+<meta name="td-surum" content="5ec83ddc2941">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -311,9 +311,9 @@ button.person, button.rank-row { width: 100%; background: none; border-left: 0; 
 .you-tag { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 0 6px; margin-left: 6px; }
 .av-wrap { position: relative; flex: none; display: block; }
 .av-wrap .dot { position: absolute; right: -1px; bottom: -1px; border: 2px solid var(--surface); width: 12px; height: 12px; }
-.elapsed { font-family: var(--f-mono); font-size: 13px; color: var(--accent); font-weight: 600; white-space: nowrap; text-align: right; display: block; }
+.elapsed { font-family: var(--f-mono); font-size: 16px; color: var(--accent); font-weight: 600; white-space: nowrap; text-align: right; display: block; }
 .elapsed.brk { color: var(--tekrar); }
-.elapsed small { display: block; color: var(--muted); font-weight: 500; font-size: 12px; font-family: var(--f-body); }
+.elapsed small { display: block; margin-top: 2px; color: var(--muted); font-weight: 500; font-size: 15px; font-family: var(--f-body); }
 .rank-row { display: grid; grid-template-columns: 24px auto minmax(0,1fr) auto; gap: 10px; align-items: center; padding-block: 10px; border-top: 1px solid var(--line); min-height: 56px; }
 .rank-row:first-child { border-top: 0; }
 .rank-row .pos { font-family: var(--f-mono); color: var(--muted); font-weight: 600; text-align: right; }
@@ -1873,7 +1873,22 @@ function typeSeg(name, sel, dis) {
   return `<div class="seg" role="radiogroup" aria-label="Çalışma türü" data-seg="${name}">${Object.keys(TYPES).map(k =>
     `<button type="button" role="radio" aria-checked="${k === sel}" data-val="${k}"${dis ? " disabled" : ""}><span class="tdot t-${k}"></span>${TSHORT[k]}</button>`).join("")}</div>`;
 }
+// Kronometre boştayken ders seçimi en son çalışılan derste durur (kronometreli ya da elle, en yeni kayıt).
+// Kişi bu açılışta dersi elle değiştirdiyse ona dokunulmaz.
+let sonDersKaynak = null;
+function sonDersiUygula() {
+  if (S.timer || S.pickElle) return;
+  if (sonDersKaynak && sonDersKaynak[0] === S.kron && sonDersKaynak[1] === S.manual) return;
+  sonDersKaynak = [S.kron, S.manual];
+  let son = null, sonK = "";
+  for (const e of [...ownTimed().list, ...manualAll()]) {
+    const k = e.d + "|" + String(Math.round(num(e.kind === "t" ? e.en : e.ts))).padStart(16, "0");
+    if (k > sonK) { sonK = k; son = e; }
+  }
+  if (son && SUBJ[son.s]) S.pick.s = son.s;
+}
 function renderTimerCard() {
+  sonDersiUygula();
   const t = S.timer;
   const s = t ? t.s : S.pick.s, ty = t ? t.t : S.pick.t;
   const brk = onBreak(t);
@@ -1985,7 +2000,7 @@ function tickTimer() {
 }
 $("timerCard").addEventListener("change", e => {
   if (e.target.id !== "tSubject" || S.timer) return;              // A4 (1. tur): kronometre açıkken ders değişmez
-  S.pick.s = e.target.value; renderTimerCard();
+  S.pick.s = e.target.value; S.pickElle = true; renderTimerCard();
 });
 $("timerCard").addEventListener("click", e => {
   const seg = e.target.closest("[data-seg='timer'] button");
