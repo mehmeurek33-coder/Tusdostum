@@ -83,7 +83,9 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     await bekle(800);
     let satirlar = await etk();
     ok('Dürtme gönderildi ve kaydedildi', /Dürtme gönderildi/.test(t1) && satirlar.length === 1 && satirlar[0].tur === 'durt' && satirlar[0].gonderen === uA && satirlar[0].alici === uB, t1 + ' ' + JSON.stringify(satirlar));
-    ok('Dürtme bildirimi kuyruğa girdi (alıcı çalışmıyor)', satirlar[0] && satirlar[0].bildirim_bekliyor === true);
+    const trSaat = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Istanbul' }).format(new Date()));
+    const gecemi = trSaat < 8 || trSaat >= 23;                       // 23:00–08:00 arası dürtme bildirimi gitmez
+    ok(gecemi ? 'Gece (23:00–08:00) dürtme bildirimi kuyruğa girmedi' : 'Dürtme bildirimi kuyruğa girdi (alıcı çalışmıyor)', satirlar[0] && satirlar[0].bildirim_bekliyor === !gecemi, String(trSaat));
     dD = await dugme(A, 'durt');
     ok('Gönderdikten sonra düğme "Dürtüldü ✓" ve kapalı', dD.var && !dD.acik && /Dürtüldü/.test(dD.yazi), JSON.stringify(dD));
     const tekrar = await A.evaluate(u => window.TusAltyapi.etkilesim.gonder(u, 'durt'), uB);
