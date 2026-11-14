@@ -38,14 +38,19 @@ const ok = (ad, kosul, ek = '') => out.push(`${kosul ? 'GEÇTİ ' : 'KALDI '} ${
   ok('Çalışma: süre aşılınca yalnızca BİR kez uyarı (tekrar yok)', JSON.stringify(c.toastlar) === JSON.stringify(['Aralıksız çalışman 60 dakikayı geçti.']), JSON.stringify(c.toastlar));
   // Son oturum sayılır: molalardan önceki 2 saat sayılmaz; son oturum 45 dk → uyarı yok
   const c2 = await dene({ workWarn: 60 }, now => ({ s: 'anatomi', t: 'konu', st: now - 4 * 3600e3, runStart: now - 45 * 60000, workMs: 120 * 60000, breakStart: null, breakMs: 20 * 60000, bn: 2 }));
-  ok('Çalışma: yalnızca son oturum (son moladan beri) sayılır; 1 saati aşmadıkça uyarı yok', c2.toastlar.length === 0, JSON.stringify(c2.toastlar));
-  // Eski kısa ayar (25 dk) 1 saat sayılır: son oturum 30 dk → uyarı yok
-  const c3 = await dene({ workWarn: 25 }, now => ({ s: 'anatomi', t: 'konu', st: now - 3600e3, runStart: now - 30 * 60000, workMs: 0, breakStart: null, breakMs: 0, bn: 0 }));
-  ok('Çalışma: 1 saatten kısa eski ayar 1 saat sayılıyor (30 dk\'da uyarı yok)', c3.toastlar.length === 0, JSON.stringify(c3.toastlar));
+  ok('Çalışma: yalnızca son oturum (son moladan beri) sayılır; seçilen süreyi aşmadıkça uyarı yok', c2.toastlar.length === 0, JSON.stringify(c2.toastlar));
+  // 30 dk seçilmiş: son oturum 31 dk → bir kez uyarı
+  const c3 = await dene({ workWarn: 30 }, now => ({ s: 'anatomi', t: 'konu', st: now - 3600e3, runStart: now - 31 * 60000, workMs: 0, breakStart: null, breakMs: 0, bn: 0 }));
+  ok('Çalışma: 30 dk seçilince 30 dakikada bir kez uyarı', JSON.stringify(c3.toastlar) === JSON.stringify(['Aralıksız çalışman 30 dakikayı geçti.']), JSON.stringify(c3.toastlar));
+  // Hedef kapalıyken de seçilen mola uyarıları çalışır
+  const hk = await dene({ workWarn: 30, hedefKapali: true }, now => ({ s: 'anatomi', t: 'konu', st: now - 3600e3, runStart: now - 31 * 60000, workMs: 0, breakStart: null, breakMs: 0, bn: 0 }));
+  ok('Hedef kapalıyken de "kaç dakikada bir mola" uyarısı geliyor', JSON.stringify(hk.toastlar) === JSON.stringify(['Aralıksız çalışman 30 dakikayı geçti.']), JSON.stringify(hk.toastlar));
+  const hm = await dene({ breakWarn: 10, hedefKapali: true }, now => ({ s: 'anatomi', t: 'konu', st: now - 3600e3, runStart: null, workMs: 30 * 60000, breakStart: now - 11 * 60000, breakMs: 0, bn: 1 }));
+  ok('Hedef kapalıyken de "mola bitti" uyarısı geliyor', hm.toastlar[0] === 'Molan 10 dakikayı geçti.', JSON.stringify(hm.toastlar));
   // Sınır: mola 3 saati aşınca tekrar yok
   const s = await dene({ breakWarn: 5 }, now => ({ s: 'anatomi', t: 'konu', st: now - 9 * 3600e3, runStart: null, workMs: 30 * 60000, breakStart: now - (5 * 60 + 3 * 3600) * 1000 - 60000, breakMs: 0, bn: 1 }));
   ok('Mola 3 saati aşınca uyarı tekrarı duruyor', s.toastlar.length === 0, JSON.stringify(s.toastlar));
-  const H = [...m.hatalar, ...c.hatalar, ...c2.hatalar, ...c3.hatalar, ...s.hatalar];
+  const H = [...m.hatalar, ...c.hatalar, ...c2.hatalar, ...c3.hatalar, ...hk.hatalar, ...hm.hatalar, ...s.hatalar];
   ok('Sayfa hatası yok', !H.length, H.join(' | '));
   console.log(out.join('\n'));
   await b.close();

@@ -74,9 +74,8 @@ degis("  isOwner: false,\n};", "  isOwner: false,\n  lastWorkOver: false,\n  wor
 
 # ---------- Çalışma uyarısı + bildirim zamanlaması ----------
 UYARI = r"""// Çalışma uyarısı: aralıksız çalışma bu kadar dakikayı geçince bir kez uyarılır (0 = kapalı)
-// En az 1 saat: daha kısa seçilmişse (eski ayar) 1 saat sayılır
-const WORK_WARN_OPTS = [0, 60, 90, 120];
-const workWarnMin = () => { const v = Number((S.settings || {}).workWarn); return v > 0 && v < 60 ? 60 : WORK_WARN_OPTS.includes(v) ? v : 0; };
+const WORK_WARN_OPTS = [0, 30, 45, 60, 75, 90, 120];
+const workWarnMin = () => { const v = Number((S.settings || {}).workWarn); return WORK_WARN_OPTS.includes(v) ? v : 0; };
 const runMs = (t, now = Date.now()) => (t && t.runStart ? Math.max(0, now - t.runStart) : 0);
 const workOver = (t, now = Date.now()) => { const w = workWarnMin(); return !!w && runMs(t, now) >= w * 60000 && runMs(t, now) < MAX_RUN_MS; };
 function workAlert() {
@@ -113,10 +112,12 @@ function syncAlerts() {
   A.bildirim.ayarla(out.filter(x => x.zaman > now + 5000));
 }
 const BELL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9zM10 20a2 2 0 0 0 4 0"/></svg>`;
+// "Hedef ve molalar": günlük hedef, kaç dakikada bir mola, mola süresi ve bildirim izni tek pencerede.
+// Seçimler dokunulduğu anda kaydedilir ve kişi değiştirene kadar korunur.
 function openAlerts() {
   const A = window.TusAltyapi, ro = readOnly();
-  const chips = (name, opts, cur) => `<div class="chips" role="radiogroup" data-chips="${name}">${opts.map(v =>
-    `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}"${ro ? " disabled" : ""}>${v || "Kapalı"}</button>`).join("")}</div>`;
+  const chips = (name, opts, cur, etiket) => `<div class="chips" role="radiogroup" data-chips="${name}">${opts.map(v =>
+    `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}"${ro ? " disabled" : ""}>${v ? etiket(v) : "Kapalı"}</button>`).join("")}</div>`;
   const note = () => {
     if (!A || S.mode !== "cloud") return "";
     const d = pushState();
@@ -126,11 +127,13 @@ function openAlerts() {
     if (d === "reddedildi") return `<span class="hint">Bildirim izni kapalı; telefon ayarlarından aç.</span>`;
     return `<span class="hint">Bu cihazda bildirim yok; uyarı uygulama açıkken çalar.</span>`;
   };
+  const hedef = hedefAcik() ? goals().dk : 0;
   const body = `
-    <div class="field">Mola uzayınca uyar (dk)${chips("breakWarn", BREAK_WARN_OPTS, breakWarnMin())}</div>
-    <div class="field">Aralıksız çalışınca uyar (dk)${chips("workWarn", WORK_WARN_OPTS, workWarnMin())}</div>
+    <div class="field">Günlük hedef${chips("goal", [0, ...HEDEF_SAAT.map(h => h * 60)], hedef, v => v / 60 + " sa")}</div>
+    <div class="field">Kaç dakikada bir mola?${chips("workWarn", WORK_WARN_OPTS, workWarnMin(), v => v + " dk")}</div>
+    <div class="field">Mola kaç dakika?${chips("breakWarn", BREAK_WARN_OPTS, breakWarnMin(), v => v + " dk")}</div>
     <div id="alNote">${note()}</div>`;
-  openModal(formShell("alForm", "alTitle", "Uyarılar", body, `<button class="btn primary" type="button" data-close-modal>Tamam</button>`));
+  openModal(formShell("alForm", "alTitle", "Hedef ve molalar", body, `<button class="btn primary" type="button" data-close-modal>Tamam</button>`));
   const f = $("alForm");
   const redraw = () => { const n = $("alNote"); if (n) n.innerHTML = note(); };
   S.alRedraw = redraw;
@@ -140,13 +143,14 @@ function openAlerts() {
     if (e.target.closest("#alPush")) { enablePush(redraw); return; }
     const b = e.target.closest("[data-chips] button"); if (!b || readOnly()) return;
     const key = b.parentElement.dataset.chips, v = +b.dataset.v;
-    writeSettings({ [key]: v });
     b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-checked", String(x === b)));
+    if (key === "goal") { writeSettings(v ? { hedefKapali: false, goalMin: v } : { hedefKapali: true }); renderToday(); kilitSesHazirla(); kilitGuncelle(); return; }
+    writeSettings({ [key]: v });
     if (v) {
       armSound();
-      if (pushState() === "sor") { enablePush(redraw); return; }
+      if (pushState() === "sor") { enablePush(redraw); renderToday(); return; }
     }
-    redraw(); syncAlerts(); renderTimerCard();
+    redraw(); syncAlerts(); renderTimerCard(); renderToday(); kilitSesHazirla(); kilitGuncelle();
   });
 }
 function firstDayKey() {"""
@@ -215,14 +219,14 @@ degis('  const el = $("banner");\n  setHTML(el, msgs',
 # ---------- Kronometre kartı: zil ve çalışma uyarısı ----------
 degis("  const longBreak = breakOver(t);\n  S.lastBreakOver = longBreak;",
       "  const longBreak = breakOver(t);\n  S.lastBreakOver = longBreak;\n  const longRun = !over && workOver(t);\n  S.lastWorkOver = longRun;\n  const alertsOn = !!(breakWarnMin() || workWarnMin());\n  const ps = alertsOn ? pushState() : \"yok\";", "kart durumu")
-degis('<div class="panel-head"><h2>Kronometre</h2>${pill}</div>',
-      '<div class="panel-head"><h2>Kronometre</h2><span class="head-r"><button class="bell${alertsOn ? " on" : ""}" data-act="alerts" type="button" aria-label="Uyarılar" aria-pressed="${alertsOn}">${BELL_SVG}</button>${pill}</span></div>', "zil")
 degis('    ${longBreak ? `<div class="nudge">Molan ${breakWarnMin()} dakikayı geçti.</div>` : ""}',
       '    ${longBreak ? `<div class="nudge">Molan ${breakWarnMin()} dakikayı geçti.</div>` : ""}\n    ${longRun ? `<div class="nudge">Aralıksız çalışman ${workWarnMin()} dakikayı geçti.</div>` : ""}\n    ${ps === "sor" ? `<div class="tc-actions" style="margin-top:10px"><button class="btn sm" data-act="push-on" type="button">${BELL_SVG}Bildirimleri aç</button></div>` : ps === "anaEkran" ? `<div class="nudge">Ekran kapalıyken bildirim için ana ekrana ekle.</div>` : ""}', "çalışma uyarı satırı")
 degis("if ((runOverflow(t, now) > 0) !== S.lastOverflow || breakOver(t, now) !== S.lastBreakOver) renderTimerCard();",
       "if ((runOverflow(t, now) > 0) !== S.lastOverflow || breakOver(t, now) !== S.lastBreakOver || (runOverflow(t, now) <= 0 && workOver(t, now)) !== S.lastWorkOver) renderTimerCard();", "tik")
 degis('  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }',
-      '  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }\n  else if (a === \"alerts\") { if (pushState() === \"sor\") enablePush(() => S.alRedraw && S.alRedraw()); openAlerts(); }\n  else if (a === "push-on") enablePush();', "zil tıklama")
+      '  else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }\n  else if (a === "push-on") enablePush();', "zil tıklama")
+degis('document.addEventListener("click", e => { if (e.target.closest("[data-hedef-ayarla]") && !readOnly() && typeof openAlerts === "function") openAlerts(); });',
+      'document.addEventListener("click", e => { if (!e.target.closest("[data-hedef-ayarla]") || readOnly()) return; if (pushState() === "sor") enablePush(() => S.alRedraw && S.alRedraw()); openAlerts(); });', "hedef ayarla")
 degis("  if (breakOver(S.timer)) breakAlert();", "  if (breakOver(S.timer)) breakAlert();\n  if (workOver(S.timer)) workAlert();", "aralık")
 
 degis("Erişimi sürüyorsa uygulamayı açınca yeniden görünür.", "Listelerden çıkar ve yeniden katılamaz.", "çıkarma metni")
@@ -234,7 +238,6 @@ duzenli(r'    <div class="howto"><ol>\n      <li>Arkadaşından claude\.ai.*?</o
 degis('<textarea id="invText" readonly rows="5"', '<textarea id="invText" readonly rows="3"', "davet kutusu")
 
 # ---------- Ayarlar ----------
-duzenli(r'    <label class="field">Mola uyarısı<select id="gBW">.*?</span></label>\n', "", "ayarlardan mola uyarısı")
 degis('<button class="btn sm" type="button" data-backup="csv">Kayıtları indir (CSV)</button></span></div>` : ""}',
       '<button class="btn sm" type="button" data-backup="csv">Kayıtları indir (CSV)</button>'
       '<button class="btn sm" type="button" id="gRestore"${ro ? " disabled" : ""}>Yedekten yükle</button><input type="file" id="gFile" accept="application/json,.json" hidden></span></div>` : ""}', "yedekten yükle")
@@ -256,8 +259,6 @@ degis("  drawRooms();\n  f.addEventListener(\"click\", e => {",
 # Oda var mı: oda adları sunucuda gizli olduğu için denetimi sunucu yapar
 degis("async function roomExists(key) {\n  const me = myId();",
       "async function roomExists(key) {\n  const A = window.TusAltyapi;\n  if (A && S.mode === \"cloud\" && A.odaVarMi) return A.odaVarMi(key);\n  const me = myId();", "oda var mı")
-degis('writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "", breakWarn: BREAK_WARN_OPTS.includes(+$("gBW").value) ? +$("gBW").value : 0 });\n    if (breakWarnMin()) armSound();\n',
-      'writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "" });\n', "ayar kaydı")
 
 # ---------- Yedekten yükleme, giriş ekranı, yeni şifre ----------
 SON = r"""// Yeni sürüm yalnızca GÜVENLİ anda devreye girer: kronometre durmuşken, pencere açık değilken,

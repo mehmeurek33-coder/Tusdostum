@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="4b373e058f41">
+<meta name="td-surum" content="92aae83a9f68">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -210,6 +210,16 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 .bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
 .side-note { font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 8px; }
 .exam { display: flex; align-items: center; gap: 14px; }
+.hk { position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px; min-height: 76px; padding-block: 12px; }
+.hk .dolgu { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); transition: width .6s ease; }
+.hk > *:not(.dolgu) { position: relative; }
+.hk .big { font-family: var(--f-display); font-size: 26px; font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hk .big small { font-size: 13px; margin-left: 4px; font-weight: 600; }
+.hk .big.ok { color: var(--accent); }
+.hk .sag { min-width: 0; flex: 1; }
+.hk .sag > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hk .alt { font-size: 14px; color: var(--muted); margin-top: 3px; }
+.hk .ayarla { flex: none; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 14px; }
 .exam .big { font-family: var(--f-display); font-size: 34px; font-weight: 700; line-height: 1; }
 
 /* Takvim */
@@ -990,12 +1000,19 @@ function agg(list) {
   return a;
 }
 const pct = (c, q) => (q ? Math.round((c / q) * 100) : null);
+// Günlük süre hedefi "Hedef ve molalar" penceresinden seçilir (3–12 saat ya da kapalı); kişi değiştirene kadar korunur
+const HEDEF_SAAT = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const hedefAcik = () => !(S.settings || {}).hedefKapali;
+function duzenMetni() {
+  const w = typeof workWarnMin === "function" ? workWarnMin() : 0, m = breakWarnMin();
+  return w && m ? `${w} dk'da ${m} dk mola` : w ? `${w} dk'da bir mola` : m ? `Mola ${m} dk` : "Mola uyarısı kapalı";
+}
 function goals() {
   const r = S.settings || {};
   return { dk: clampNum(r.goalMin ?? 240, 10, 1440) || 240, q: clampNum(r.goalQ ?? 150, 10, 3000) || 150, exam: isDateStr(r.examDate) ? r.examDate : "" };
 }
 // Mola uyarısı: süren mola bu kadar dakikayı geçince bir kez uyarılır (0 = kapalı)
-const BREAK_WARN_OPTS = [0, 5, 10, 15, 20, 30, 45, 60];
+const BREAK_WARN_OPTS = [0, 5, 10, 15, 20, 25, 30];
 const breakWarnMin = () => { const v = Number((S.settings || {}).breakWarn); return BREAK_WARN_OPTS.includes(v) ? v : 0; };
 const breakOver = (t, now = Date.now()) => { const w = breakWarnMin(); return !!w && onBreak(t) && curBreak(t, now) >= w * 60000; };
 let actx = null;
@@ -1103,37 +1120,66 @@ const ALERT_EVERY_MS = 5 * 60000, BREAK_ALERT_MAX_MS = 3 * 3600 * 1000;
 // Kronometreye dokunmaz; yalnızca gösterir (kulaklık çıkarınca gelen "duraklat" kronometreyi etkilemez).
 const kilitDestek = () => "mediaSession" in navigator && typeof MediaMetadata !== "undefined";
 const kilitAcik = () => !!PREF.kilitSayac && kilitDestek();
-let kilitSes = null, kilitSonBaslik = "", kilitBlob = null;
-const KILIT_SES = "ses/sessiz-12sa.m4a", KILIT_SURE = 12 * 3600;
-// Ses kaydı bir kez indirilir ve telefonda saklanır (sonra çevrimdışı da çalışır); hazır değilse doğrudan adresten çalınır
+let kilitSes = null, kilitSonBaslik = "";
+const KILIT_SES = "ses/sessiz-12sa.m4a", KILIT_SURE = 12 * 3600, kilitBloblar = {};
+// Hedef açıkken hedef uzunluğunda (3–12 sa) bir kayıt bugün çalışılan süreden çalar: kilit ekranında solda bugün çalışılan,
+// sağda hedefe kalan süre görünür. Molada mola uzunluğunda kayıt (5–30 dk) çalar. Hedef dolunca ya da mola süresi aşılınca
+// (ve hedef kapalıyken) 12 saatlik kayıt ileri sayar.
+const kilitHedefSes = h => h === 12 ? KILIT_SES : `ses/hedef-${h}sa.m4a`, kilitMolaSes = m => `ses/mola-${m}dk.m4a`;
+// Kayıtlar bir kez indirilir ve telefonda saklanır (sonra çevrimdışı da çalışır); hazır değilse doğrudan adresten çalınır
 async function kilitSesHazirla() {
-  if (kilitBlob || !kilitAcik()) return;
-  try {
-    const c = await caches.open("tusdostum-ses");
-    let r = await c.match(KILIT_SES);
-    if (!r) { r = await fetch(KILIT_SES); if (!r.ok) return; try { await c.put(KILIT_SES, r.clone()); } catch {} }
-    kilitBlob = URL.createObjectURL(await r.blob());
-  } catch {}
+  if (!kilitAcik()) return;
+  const lazim = [KILIT_SES];
+  if (hedefAcik() && HEDEF_SAAT.includes(goals().dk / 60)) lazim.push(kilitHedefSes(goals().dk / 60));
+  if (breakWarnMin()) lazim.push(kilitMolaSes(breakWarnMin()));
+  for (const u of lazim) {
+    if (kilitBloblar[u]) continue;
+    try {
+      const c = await caches.open("tusdostum-ses");
+      let r = await c.match(u);
+      if (!r) { r = await fetch(u); if (!r.ok) continue; try { await c.put(u, r.clone()); } catch {} }
+      kilitBloblar[u] = URL.createObjectURL(await r.blob());
+    } catch {}
+  }
 }
 function kilitBilgi() {
   const t = S.timer; if (!t || !SUBJ[t.s]) return null;
-  const sh = shownTimes(t, Date.now()), brk = onBreak(t);
-  return { brk, pos: (brk ? sh.brk : sh.work) / 1000, baslik: brk ? `Mola · ${SUBJ[t.s].n}` : `${SUBJ[t.s].n} · ${TSHORT[t.t]}` };
+  const now = Date.now(), sh = shownTimes(t, now), ders = SUBJ[t.s].n;
+  if (onBreak(t)) {
+    const m = breakWarnMin(), sn = sh.brk / 1000;
+    if (m && sn < m * 60 - 1) return { src: kilitMolaSes(m), sure: m * 60, pos: sn, baslik: `Mola · ${m} dk`, alt: "TusDostum" };
+    return { src: KILIT_SES, sure: KILIT_SURE, pos: sn, baslik: m ? `Mola · ${m} dk doldu` : `Mola · ${ders}`, alt: "TusDostum" };
+  }
+  const baslik = `${ders} · ${TSHORT[t.t]}`;
+  if (hedefAcik()) {
+    const g = goals().dk, tk = todayKey();
+    const bugun = agg(myTimedAll().filter(e => e.d === tk)).dk * 60 + Math.floor(todayShare(t, now) / 1000);   // saniye
+    if (bugun >= g * 60 - 1) return { src: KILIT_SES, sure: KILIT_SURE, pos: bugun, baslik: `Hedef tamam · ${ders}`, alt: "TusDostum" };
+    if (HEDEF_SAAT.includes(g / 60)) return { src: kilitHedefSes(g / 60), sure: g * 60, pos: bugun, baslik, alt: `TusDostum · hedef ${g / 60} sa` };
+    return { src: KILIT_SES, sure: KILIT_SURE, pos: bugun, baslik, alt: `TusDostum · hedef ${fmtMin(g)}` };
+  }
+  return { src: KILIT_SES, sure: KILIT_SURE, pos: sh.work / 1000, baslik, alt: "TusDostum" };
 }
 function kilitGuncelle() {
   if (!kilitSes) return;
   const k = kilitBilgi(); if (!k) { kilitDurdur(); return; }
-  if (k.pos >= KILIT_SURE - 5) { kilitDurdur(); return; }
+  if (k.src === KILIT_SES && k.pos >= KILIT_SURE - 5) { kilitDurdur(); return; }
   const el = kilitSes.el;
-  try { if (el.readyState >= 1 && Math.abs(el.currentTime - k.pos) > 1.5) el.currentTime = k.pos; } catch {}   // sesin süresi = kronometre
+  if (kilitSes.src !== k.src) {                                     // hedef doldu, mola başladı/bitti: başka kayda geçilir
+    kilitSes.src = k.src; kilitSonBaslik = "";
+    try { el.src = kilitBloblar[k.src] || k.src; el.play().catch(() => {}); } catch {}
+    return;                                                          // süre, kayıt yüklenince (loadedmetadata) ayarlanır
+  }
+  try { if (el.readyState >= 1 && Math.abs(el.currentTime - k.pos) > 1.5) el.currentTime = Math.min(k.pos, k.sure - 1); } catch {}   // sesin süresi = kronometre
   try {
-    if (k.baslik !== kilitSonBaslik) {
-      kilitSonBaslik = k.baslik;
+    const iz = k.baslik + "|" + k.alt;
+    if (iz !== kilitSonBaslik) {
+      kilitSonBaslik = iz;
       const ikon = (document.querySelector('link[rel="apple-touch-icon"]') || {}).href;
-      navigator.mediaSession.metadata = new MediaMetadata({ title: k.baslik, artist: "TusDostum", album: k.brk ? "Mola" : "Çalışma", artwork: ikon ? [{ src: ikon, sizes: "180x180", type: "image/png" }] : [] });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: k.baslik, artist: k.alt, album: "TusDostum", artwork: ikon ? [{ src: ikon, sizes: "180x180", type: "image/png" }] : [] });
     }
     navigator.mediaSession.playbackState = "playing";
-    if (navigator.mediaSession.setPositionState) navigator.mediaSession.setPositionState({ duration: KILIT_SURE, position: k.pos, playbackRate: 1 });
+    if (navigator.mediaSession.setPositionState) navigator.mediaSession.setPositionState({ duration: k.sure, position: Math.min(k.pos, k.sure), playbackRate: 1 });
   } catch {}
 }
 function kilitBaslat() {                                            // yalnızca bir dokunuşun içinden çağrılır
@@ -1141,11 +1187,12 @@ function kilitBaslat() {                                            // yalnızca
   stopBreakAudio();
   if (!kilitSes) {
     try {
-      const el = new Audio(); el.preload = "auto"; el.src = kilitBlob || KILIT_SES;
+      const k = kilitBilgi(), src = k ? k.src : KILIT_SES;
+      const el = new Audio(); el.preload = "auto"; el.src = kilitBloblar[src] || src;
       el.addEventListener("loadedmetadata", kilitGuncelle);
       el.addEventListener("timeupdate", kilitGuncelle);
-      el.addEventListener("ended", kilitDurdur);
-      kilitSes = { el }; kilitSonBaslik = "";
+      el.addEventListener("ended", kilitGuncelle);
+      kilitSes = { el, src }; kilitSonBaslik = "";
       const devam = () => { if (kilitSes) { kilitSes.el.play().catch(() => {}); kilitGuncelle(); } };
       try {
         navigator.mediaSession.setActionHandler("pause", devam);          // kilit ekranından duraklatma kronometreyi etkilemez
@@ -1177,9 +1224,8 @@ function breakAlert() {
   toast(`Molan ${w + n * 5} dakikayı geçti.`);
 }
 // Çalışma uyarısı: aralıksız çalışma bu kadar dakikayı geçince bir kez uyarılır (0 = kapalı)
-// En az 1 saat: daha kısa seçilmişse (eski ayar) 1 saat sayılır
-const WORK_WARN_OPTS = [0, 60, 90, 120];
-const workWarnMin = () => { const v = Number((S.settings || {}).workWarn); return v > 0 && v < 60 ? 60 : WORK_WARN_OPTS.includes(v) ? v : 0; };
+const WORK_WARN_OPTS = [0, 30, 45, 60, 75, 90, 120];
+const workWarnMin = () => { const v = Number((S.settings || {}).workWarn); return WORK_WARN_OPTS.includes(v) ? v : 0; };
 const runMs = (t, now = Date.now()) => (t && t.runStart ? Math.max(0, now - t.runStart) : 0);
 const workOver = (t, now = Date.now()) => { const w = workWarnMin(); return !!w && runMs(t, now) >= w * 60000 && runMs(t, now) < MAX_RUN_MS; };
 function workAlert() {
@@ -1216,10 +1262,12 @@ function syncAlerts() {
   A.bildirim.ayarla(out.filter(x => x.zaman > now + 5000));
 }
 const BELL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9zM10 20a2 2 0 0 0 4 0"/></svg>`;
+// "Hedef ve molalar": günlük hedef, kaç dakikada bir mola, mola süresi ve bildirim izni tek pencerede.
+// Seçimler dokunulduğu anda kaydedilir ve kişi değiştirene kadar korunur.
 function openAlerts() {
   const A = window.TusAltyapi, ro = readOnly();
-  const chips = (name, opts, cur) => `<div class="chips" role="radiogroup" data-chips="${name}">${opts.map(v =>
-    `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}"${ro ? " disabled" : ""}>${v || "Kapalı"}</button>`).join("")}</div>`;
+  const chips = (name, opts, cur, etiket) => `<div class="chips" role="radiogroup" data-chips="${name}">${opts.map(v =>
+    `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}"${ro ? " disabled" : ""}>${v ? etiket(v) : "Kapalı"}</button>`).join("")}</div>`;
   const note = () => {
     if (!A || S.mode !== "cloud") return "";
     const d = pushState();
@@ -1229,11 +1277,13 @@ function openAlerts() {
     if (d === "reddedildi") return `<span class="hint">Bildirim izni kapalı; telefon ayarlarından aç.</span>`;
     return `<span class="hint">Bu cihazda bildirim yok; uyarı uygulama açıkken çalar.</span>`;
   };
+  const hedef = hedefAcik() ? goals().dk : 0;
   const body = `
-    <div class="field">Mola uzayınca uyar (dk)${chips("breakWarn", BREAK_WARN_OPTS, breakWarnMin())}</div>
-    <div class="field">Aralıksız çalışınca uyar (dk)${chips("workWarn", WORK_WARN_OPTS, workWarnMin())}</div>
+    <div class="field">Günlük hedef${chips("goal", [0, ...HEDEF_SAAT.map(h => h * 60)], hedef, v => v / 60 + " sa")}</div>
+    <div class="field">Kaç dakikada bir mola?${chips("workWarn", WORK_WARN_OPTS, workWarnMin(), v => v + " dk")}</div>
+    <div class="field">Mola kaç dakika?${chips("breakWarn", BREAK_WARN_OPTS, breakWarnMin(), v => v + " dk")}</div>
     <div id="alNote">${note()}</div>`;
-  openModal(formShell("alForm", "alTitle", "Uyarılar", body, `<button class="btn primary" type="button" data-close-modal>Tamam</button>`));
+  openModal(formShell("alForm", "alTitle", "Hedef ve molalar", body, `<button class="btn primary" type="button" data-close-modal>Tamam</button>`));
   const f = $("alForm");
   const redraw = () => { const n = $("alNote"); if (n) n.innerHTML = note(); };
   S.alRedraw = redraw;
@@ -1243,13 +1293,14 @@ function openAlerts() {
     if (e.target.closest("#alPush")) { enablePush(redraw); return; }
     const b = e.target.closest("[data-chips] button"); if (!b || readOnly()) return;
     const key = b.parentElement.dataset.chips, v = +b.dataset.v;
-    writeSettings({ [key]: v });
     b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-checked", String(x === b)));
+    if (key === "goal") { writeSettings(v ? { hedefKapali: false, goalMin: v } : { hedefKapali: true }); renderToday(); kilitSesHazirla(); kilitGuncelle(); return; }
+    writeSettings({ [key]: v });
     if (v) {
       armSound();
-      if (pushState() === "sor") { enablePush(redraw); return; }
+      if (pushState() === "sor") { enablePush(redraw); renderToday(); return; }
     }
-    redraw(); syncAlerts(); renderTimerCard();
+    redraw(); syncAlerts(); renderTimerCard(); renderToday(); kilitSesHazirla(); kilitGuncelle();
   });
 }
 function firstDayKey() {
@@ -1941,7 +1992,7 @@ function renderTimerCard() {
       <button class="btn ghost" data-act="reset" type="button"${ro ? " disabled" : ""}>Sıfırla</button>`;
   const loadMsg = loadingData() ? `<div class="lock-note">${S.loadTimeout ? "Kayıtlarına şu an ulaşılamıyor. Güvenlik için yeni kayıt geçici olarak kapalı." : "Kayıtların yükleniyor…"}</div>` : "";
   setHTML($("timerCard"), `
-    <div class="panel-head"><h2>Kronometre</h2><span class="head-r"><button class="bell${alertsOn ? " on" : ""}" data-act="alerts" type="button" aria-label="Uyarılar" aria-pressed="${alertsOn}">${BELL_SVG}</button>${pill}</span></div>
+    <div class="panel-head"><h2>Kronometre</h2>${pill}</div>
     <div class="stack-gap">
       <label class="field" for="tSubject">Ders</label>
       <div class="subj-pick">${badge(s)}<select id="tSubject"${t ? " disabled" : ""}>${subjectOptions(s)}</select></div>
@@ -2046,7 +2097,6 @@ $("timerCard").addEventListener("click", e => {
   else if (a === "reset-no") { S.confirmReset = false; renderTimerCard(); }
   else if (a === "reset-yes") { S.confirmReset = false; if (!readOnly()) setTimer(null); }
   else if (a === "manual") { if (!readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() }); }
-  else if (a === "alerts") { if (pushState() === "sor") enablePush(() => S.alRedraw && S.alRedraw()); openAlerts(); }
   else if (a === "push-on") enablePush();
 });
 function finishTimer() {
@@ -2118,11 +2168,21 @@ function renderToday() {
     examHTML = `<div class="panel exam"><div><div class="eyebrow">Sınav tarihi</div><div class="small muted">Geri sayım için <button class="btn ghost" data-open="settings" type="button">sınav tarihini ekle</button></div></div></div>`;
   }
   const todays = [...timed.filter(e => e.d === tk), ...manualAll().filter(e => e.d === tk)].sort((a, b) => b.ts - a.ts);
+  const ayarla = `<button class="ayarla" type="button" data-hedef-ayarla${readOnly() ? " disabled" : ""}>Ayarla</button>`;
+  let hedefHTML;
+  if (!hedefAcik()) hedefHTML = `<div class="panel hk"><div class="sag"><div class="eyebrow">Günlük hedef kapalı</div><div class="alt">${esc(duzenMetni())}</div></div>${ayarla}</div>`;
+  else {
+    const yapilan = today.dk + live, kalan = g.dk - yapilan, oran = Math.min(100, Math.round((yapilan / g.dk) * 100));
+    hedefHTML = `<div class="panel hk${kalan <= 0 ? " tamam" : ""}"><span class="dolgu" style="width:${oran}%"></span>
+      ${kalan > 0 ? `<div class="big">${Math.floor(kalan / 60)}:${pad(kalan % 60)}<small>kaldı</small></div>` : `<div class="big ok" aria-hidden="true">✓</div>`}
+      <div class="sag"><div class="eyebrow">Hedef ${esc(fmtMin(g.dk))}${kalan <= 0 ? " tamam" : ""}</div><div class="alt">${esc(kalan < 0 ? `+${fmtMin(-kalan)} fazladan · ${duzenMetni()}` : duzenMetni())}</div></div>${ayarla}</div>`;
+  }
   setHTML($("todaySide"), `
+    ${hedefHTML}
     <div class="panel">
       <div class="panel-head"><h2>Bugün</h2><span class="small muted">${streak ? `${streak} günlük seri` : "Seri yok, bugün başlat"}</span></div>
       <div class="kpis">
-        <div class="kpi"><div class="l">Çalışma süresi</div><div class="v">${esc(fmtMin(today.dk + live))}</div><div class="bar"><i style="width:${dkPct}%"></i></div><div class="small muted num">Hedef ${esc(fmtMin(g.dk))}</div></div>
+        <div class="kpi"><div class="l">Çalışma süresi</div><div class="v">${esc(fmtMin(today.dk + live))}</div>${hedefAcik() ? `<div class="bar"><i style="width:${dkPct}%"></i></div><div class="small muted num">Hedef ${esc(fmtMin(g.dk))}</div>` : ""}</div>
         <div class="kpi"><div class="l">Çözülen soru</div><div class="v">${fmtNum(today.q)}</div><div class="bar"><i style="width:${qPct}%;background:var(--soru)"></i></div><div class="small muted num">Hedef ${fmtNum(g.q)}</div></div>
         <div class="kpi"><div class="l">Doğru oranı</div><div class="v">${acc === null ? "–" : "%" + acc}</div><div class="small muted num">${today.q ? `${fmtNum(today.c)} D · ${fmtNum(today.w)} Y · ${fmtNum(today.q - today.c - today.w)} B` : ""}</div></div>
         <div class="kpi"><div class="l">Mola</div><div class="v">${esc(fmtMin(today.brk + liveBrk))}</div></div>
@@ -2279,6 +2339,7 @@ $("logPanel").addEventListener("click", e => {
   if (e.target.closest("[data-act-new]") && !readOnly()) openManualForm({ s: S.pick.s, t: S.pick.t, d: todayKey() });
 });
 
+document.addEventListener("click", e => { if (!e.target.closest("[data-hedef-ayarla]") || readOnly()) return; if (pushState() === "sor") enablePush(() => S.alRedraw && S.alRedraw()); openAlerts(); });
 // ---------- Tebrik ve dürtme (yalnızca ortak kişisel odadakiler arasında; yalnızca GitHub sürümünde) ----------
 const ETK = () => { const A = window.TusAltyapi; return S.mode === "cloud" && A && A.etkilesim ? A.etkilesim : null; };
 const tebrikSayi = uid => { const e = ETK(); return e ? e.sayi(uid) : { toplam: 0, bugun: 0 }; };
@@ -3292,10 +3353,7 @@ function openSettings() {
     <label class="field">Görünen ad<input type="text" id="gNick" maxlength="24" value="${esc(typeof r.nick === "string" ? r.nick : "")}" placeholder="ör. Mehmet K." autocomplete="off"></label>
     <div class="field">Odalar<div class="rooms-ed" id="gRooms"></div></div>
     <div class="field">Simge<div class="av-grid" id="gAv">${AVATARS.map((a, i) => `<button type="button" class="av-opt" data-av="${i}" aria-pressed="${i === person(myId()).av}" aria-label="Simge ${i + 1}">${a}</button>`).join("")}</div></div>
-    <div class="form-grid">
-      <label class="field">Günlük süre hedefi (dk)<input type="number" id="gM" inputmode="numeric" min="10" max="1440" value="${g.dk}"></label>
-      <label class="field">Günlük soru hedefi<input type="number" id="gQ" inputmode="numeric" min="10" max="3000" value="${g.q}"></label>
-    </div>
+    <label class="field">Günlük soru hedefi<input type="number" id="gQ" inputmode="numeric" min="10" max="3000" value="${g.q}"></label>
     <label class="field">Sınav tarihi<input type="date" id="gE" value="${esc(g.exam)}"></label>
     ${ETK() ? `<label class="check"><input type="checkbox" id="gDurt"${S.settings.durtmeKapali ? "" : " checked"}><span>Dürtmelere izin ver</span></label>` : ""}
     ${kilitDestek() ? `<label class="check"><input type="checkbox" id="gLock"${PREF.kilitSayac ? " checked" : ""}><span>Kilit ekranında sayaç <span class="hint">(deneysel · açıkken çalan müzik durur)</span></span></label>` : ""}
@@ -3328,11 +3386,10 @@ function openSettings() {
   f.addEventListener("submit", e => {
     e.preventDefault();
     if (readOnly()) return;
-    const gm = numVal("gM"), gq = numVal("gQ"), ge = $("gE").value;
-    if (!Number.isInteger(gm) || gm < 10 || gm > 1440) { $("gErr").textContent = "Süre hedefi 10 ile 1440 dakika arasında olmalı."; return; }
+    const gq = numVal("gQ"), ge = $("gE").value;
     if (!Number.isInteger(gq) || gq < 10 || gq > 3000) { $("gErr").textContent = "Soru hedefi 10 ile 3000 arasında olmalı."; return; }
     if (ge && !isDateStr(ge)) { $("gErr").textContent = "Geçerli bir sınav tarihi seç."; return; }
-    writeSettings({ goalMin: gm, goalQ: gq, examDate: ge || "" });
+    writeSettings({ goalQ: gq, examDate: ge || "" });
     const before = myRoomKeys().join("|");
     if ($("gDurt") && !!S.settings.durtmeKapali === $("gDurt").checked) writeSettings({ durtmeKapali: !$("gDurt").checked });
     if ($("gLock")) { PREF.kilitSayac = $("gLock").checked; savePref(); if (PREF.kilitSayac) { kilitBaslat(); kilitSesHazirla(); } else kilitDurdur(); }

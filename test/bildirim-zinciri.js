@@ -48,7 +48,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
     ok('Uygulama bildirimi (manifest): ad, tam ekran, simgeler erişilebilir', manifest.ad === 'TusDostum' && manifest.gorunum === 'standalone' && manifest.ikon.every(Boolean), JSON.stringify(manifest));
 
     // ---- Zil → izin → cihaz kaydı ----
-    await p.click('#timerCard .bell'); await p.waitForSelector('#alForm');
+    await p.click('[data-hedef-ayarla]'); await p.waitForSelector('#alForm');
     await p.click('[data-chips="breakWarn"] button[data-v="5"]');
     await bekle(900);
     const abone = await S.sql('select endpoint, p256dh, auth from push_abonelikleri where uid = $1', [uid]);

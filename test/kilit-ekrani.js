@@ -41,9 +41,10 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   ok('Ayarlarda "Kilit ekranında sayaç" seçeneği ve uyarısı var', /Kilit ekranında sayaç/.test(metin) && /müzik durur/.test(metin), metin);
   await p.check('#gLock'); await p.click('#setForm button[type=submit]'); await bekle(1500);
   d = await durum();
-  ok('Açılınca 12 saatlik sessiz kayıt çalıyor (döngü değil)', d.caliyor && !d.dongu && /ses\/sessiz-12sa\.m4a$/.test(d.src) && Math.round(d.sesSure) === 43200, JSON.stringify(d));
-  ok('Sesin kendi geçen süresi = kronometrenin gösterdiği süre (kilit ekranı bunu gösterir)', Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify(d));
-  ok('Kilit ekranı bilgisi: "Anatomi · Konu" — TusDostum', d.baslik === 'Anatomi · Konu' && d.sanatci === 'TusDostum', JSON.stringify(d));
+  ok('Hedef 4 sa: 4 saatlik sessiz kayıt çalıyor (döngü değil) — sağda hedefe kalan süre', d.caliyor && !d.dongu && /ses\/hedef-4sa\.m4a$/.test(d.src) && Math.round(d.sesSure) === 14400 && d.pos.duration === 14400, JSON.stringify(d));
+  ok('Sesin geçen süresi = bugün çalışılan süre (kilit ekranının solu)', Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify(d));
+  ok('Kilit ekranı alt yazısı: "TusDostum · hedef 4 sa"', d.sanatci === 'TusDostum · hedef 4 sa', JSON.stringify(d));
+  ok('Kilit ekranı başlığı: "Anatomi · Konu"', d.baslik === 'Anatomi · Konu', JSON.stringify(d));
   ok('Kilit ekranındaki süre kronometreyle aynı', d.pos && Math.abs(d.pos.position - sn(d.saat)) <= 1 && d.pos.playbackRate === 1 && d.pos.duration > d.pos.position, JSON.stringify(d));
   // Kilit ekranından "duraklat" → kronometre durmamalı
   await p.evaluate(() => window.__ms.handlers.pause && window.__ms.handlers.pause());
@@ -71,6 +72,29 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   await p.reload(); await bekle(800); await p.click('#timerCard h2'); await bekle(1500);
   d = await durum();
   ok('Uzun oturumda (2 sa 15 dk) kilit ekranı sayacı da 2:15:xx\'ten ilerliyor', sn(d.saat) >= 8100 && Math.abs(d.sesSn - sn(d.saat)) <= 1.6 && d.baslik === 'Dahiliye · Soru', JSON.stringify(d));
+  // Hedef ve mola düzeni: mola 10 dk → molada 10 dakikalık kayıt geri sayar; hedef dolunca 12 saatlik kayıtla ileri sayar; hedef kapalı → 12 saat
+  const ayarla = ayar => p.evaluate(a => { const v = JSON.parse(localStorage.getItem('tusdostum.v3')); v.settings = { ...v.settings, ...a }; localStorage.setItem('tusdostum.v3', JSON.stringify(v)); }, ayar);
+  await ayarla({ breakWarn: 10 });
+  await p.evaluate(() => { const v = JSON.parse(localStorage.getItem('tusdostum.v3')); const n = Date.now(); v.root.timer = { s: 'anatomi', t: 'konu', st: n - 40 * 60000, runStart: null, workMs: 37 * 60000, breakStart: n - 3 * 60000, breakMs: 0, bn: 1 }; localStorage.setItem('tusdostum.v3', JSON.stringify(v)); });
+  await p.reload(); await bekle(800); await p.click('#timerCard h2'); await bekle(1500);
+  d = await durum();
+  ok('Molada (10 dk seçili): "Mola · 10 dk", 10 dakikalık kayıt molanın süresinden çalıyor', d.baslik === 'Mola · 10 dk' && /mola-10dk\.m4a$/.test(d.src) && Math.round(d.sesSure) === 600 && Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify(d));
+  await ayarla({ goalMin: 180 });
+  await p.evaluate(() => { const v = JSON.parse(localStorage.getItem('tusdostum.v3')); const n = Date.now(); v.root.timer = { s: 'anatomi', t: 'konu', st: n - 200 * 60000, runStart: n - 20 * 60000, workMs: 175 * 60000, breakStart: null, breakMs: 5 * 60000, bn: 1 }; localStorage.setItem('tusdostum.v3', JSON.stringify(v)); });
+  await p.reload(); await bekle(800); await p.click('#timerCard h2'); await bekle(1500);
+  d = await durum();
+  ok('Hedef (3 sa) dolunca: "Hedef tamam · Anatomi", 12 saatlik kayıt bugün çalışılandan ileri sayıyor', d.baslik === 'Hedef tamam · Anatomi' && /sessiz-12sa\.m4a$/.test(d.src) && Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify(d));
+  // Hedef, kronometre çalışırken dolar: kayıt kendiliğinden değişir
+  await p.evaluate(() => { const v = JSON.parse(localStorage.getItem('tusdostum.v3')); const n = Date.now(); v.root.timer = { s: 'anatomi', t: 'konu', st: n - 200 * 60000, runStart: n - 20 * 60000 + 4000, workMs: 160 * 60000, breakStart: null, breakMs: 5 * 60000, bn: 1 }; localStorage.setItem('tusdostum.v3', JSON.stringify(v)); });
+  await p.reload(); await bekle(800); await p.click('#timerCard h2'); await bekle(1000);
+  const once = await durum();
+  await bekle(5000);
+  d = await durum();
+  ok('Çalışırken hedef dolunca kilit ekranı kendiliğinden "Hedef tamam"a geçiyor', /hedef-3sa\.m4a$/.test(once.src) && d.baslik === 'Hedef tamam · Anatomi' && /sessiz-12sa\.m4a$/.test(d.src) && d.caliyor && Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify([once.src, once.baslik, d]));
+  await ayarla({ hedefKapali: true });
+  await p.reload(); await bekle(800); await p.click('#timerCard h2'); await bekle(1500);
+  d = await durum();
+  ok('Hedef kapalıyken 12 saatlik kayıt oturum süresinden ileri sayıyor', d.baslik === 'Anatomi · Konu' && /sessiz-12sa\.m4a$/.test(d.src) && Math.abs(d.sesSn - sn(d.saat)) <= 1.6, JSON.stringify(d));
   // Sıfırla → durur
   await p.click('[data-act="reset"]'); await p.click('[data-act="reset-yes"]'); await bekle(600);
   d = await durum();

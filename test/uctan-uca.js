@@ -114,15 +114,15 @@ const gun = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${p
     ok('Son 10 gün profil satırında YOK', !('son' in ka2.veri));
 
     // ---------- 3. Zil: mola ve çalışma uyarısı, bildirim zamanlaması ----------
-    ok('Kronometre kartında zil var', await A.isVisible('#timerCard .bell'));
-    await A.click('#timerCard .bell'); await A.waitForSelector('#alForm');
+    ok('Kronometrede zil yok; hedef kutusunda "Ayarla" var', !(await A.$('#timerCard .bell')) && await A.isVisible('[data-hedef-ayarla]'));
+    await A.click('[data-hedef-ayarla]'); await A.waitForSelector('#alForm');
     await A.click('[data-chips="breakWarn"] button[data-v="5"]');
     await A.click('[data-chips="workWarn"] button[data-v="90"]');
     await A.click('#alForm [data-close-modal]');
     await bekle(500);
     const ayar2 = (await S.sql(`select veri from ozel_belgeler where uid = $1 and belge = 'ayar'`, [uidOf('ayse@test.dev')]))[0].veri;
     ok('Uyarı süreleri ayarlara girmeden kaydedildi', ayar2.breakWarn === 5 && ayar2.workWarn === 90, JSON.stringify(ayar2));
-    ok('Zil açık görünüyor', await A.$eval('#timerCard .bell', e => e.classList.contains('on')));
+    ok('Hedef kutusunda seçilen düzen yazıyor: "90 dk\'da 5 dk mola"', (await A.textContent('.hk')).includes("90 dk'da 5 dk mola"), await A.textContent('.hk'));
     ok('Kronometre durmuşken bekleyen uyarı yok', (await uyarilar('ayse@test.dev')).length === 0);
     await A.click('[data-act="start"]'); await bekle(700);
     let u = await uyarilar('ayse@test.dev');
