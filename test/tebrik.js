@@ -44,6 +44,8 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
   const dugme = (p, tur) => p.evaluate(t => { const x = document.querySelector(`#profileOverlay [data-etk="${t}"]`); return x ? { var: true, acik: !x.disabled, yazi: x.textContent.trim() } : { var: false }; }, tur);
   const toastBekle = async (p, re) => { for (let i = 0; i < 30; i++) { const t = await p.textContent('#toast').catch(() => ''); if (re.test(t)) return t; await bekle(100); } return p.textContent('#toast').catch(() => ''); };
   const anlik = p => p.evaluate(() => { const x = document.querySelector('.tb-anlik'); return x ? x.textContent.replace(/\s+/g, ' ').trim() : ''; });
+  const yas = p => p.evaluate(() => { const x = document.querySelector('.tb-anlik'); return x ? Date.now() - Number(x.dataset.acildi) : -1; });
+  const yasBekle = async (p, ms) => { for (let i = 0; i < 100; i++) { const y = await yas(p); if (y < 0 || y >= ms) return y; await bekle(25); } return yas(p); };
   const anlikBekle = async (p, ms) => { for (let i = 0; i < ms / 200; i++) { const t = await anlik(p); if (t) return t; await bekle(200); } return ''; };
 
   try {
@@ -135,6 +137,8 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     // ---------- 6. Mola: açılır kart bir kez ----------
     await B.click('[data-act="pause"]');
     const kartMetni = await anlikBekle(B, 4000);
+    const erkenYas = await yas(B); await B.click('.tb-anlik'); await bekle(150);
+    ok('İlk 1 saniyede dokunmak pencereyi kapatmıyor (yanlışlıkla kapanmasın)', erkenYas >= 0 && erkenYas < 900 && !!(await anlik(B)), String(erkenYas));
     await bekle(500); await cek(B, '5-mola-tebrik');
     ok('Mola verince açılır kart: "Ayşe seni tebrik etti"', /Ayşe seni tebrik etti/.test(kartMetni), kartMetni);
     ok('Kartta yalnızca "Çalışırken gönderdi" (sayı yok)', /Çalışırken gönderdi$/.test(kartMetni) && !/\d/.test(kartMetni), kartMetni);
@@ -187,25 +191,27 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     // ---------- 6c. Uygulama yeni açılınca (iPhone sesi ilk dokunuşa kadar açmaz): ses dokunuşla gelir ----------
     await B.context().addInitScript(() => {
       if (sessionStorage.getItem('__iphone') !== '1') return;
-      window.__dokundu = false; window.__osc = 0;
-      document.addEventListener('click', () => { window.__dokundu = true; }, true);
+      window.__dokundu = false; window.__osc = 0; window.__bekleyen = [];
+      document.addEventListener('click', () => { window.__dokundu = true; window.__bekleyen.splice(0).forEach(f => f()); }, true);
       const P = AudioContext.prototype, durum = Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, 'state').get, ac = P.resume, osc = BaseAudioContext.prototype.createOscillator;
       Object.defineProperty(P, 'state', { configurable: true, get() { return window.__dokundu ? durum.call(this) : 'suspended'; } });
-      P.resume = function () { return window.__dokundu ? ac.call(this) : new Promise(() => {}); };     // iPhone gibi: dokunuşa kadar askıda
+      P.resume = function () { return window.__dokundu ? ac.call(this) : new Promise(r => window.__bekleyen.push(() => ac.call(this).then(r))); };   // iPhone gibi: dokunuşa kadar askıda
       P.createOscillator = function () { window.__osc++; return osc.call(this); };
     });
     await B.evaluate(() => sessionStorage.setItem('__iphone', '1'));
     await S.sql(`insert into etkilesimler (gonderen, alici, tur, oda, gun) values ($1, $2, 'tebrik', '', (select td_bugun()))`, [uC, uB]);
     await B.reload();
     const soguk = await anlikBekle(B, 6000);
-    await bekle(700);
+    await yasBekle(B, 650);                                          // ses açma denemesi bitti (çalamadı)
     const oscAcilis = await B.evaluate(() => window.__osc);
     ok('Yeni açılışta tebrik penceresi çıkıyor (iPhone sesi henüz açmadı → ses yok)', /Cem seni tebrik etti/.test(soguk) && oscAcilis === 0, soguk + ' ' + oscAcilis);
-    const t0 = Date.now(); await B.click('.tb-anlik'); await bekle(250);
-    const oscDokunus = await B.evaluate(() => window.__osc), kapandi = !(await anlik(B));
-    ok('Pencereye dokununca tebrik sesi o anda çalıyor ve pencere hemen kapanıyor', oscDokunus === 6 && kapandi, `${oscDokunus} ${kapandi}`);
-    await bekle(600);
-    ok('Ses yalnızca bir kez çaldı', await B.evaluate(() => window.__osc) === 6);
+    const ilkYas = await yas(B); await B.click('.tb-anlik'); await bekle(150);
+    const oscIlk = await B.evaluate(() => window.__osc), acik = !!(await anlik(B));
+    ok('İlk saniyedeki dokunuş: ses o anda çalıyor, pencere açık kalıyor', ilkYas < 1000 && oscIlk === 6 && acik, `${ilkYas} ${oscIlk} ${acik}`);
+    await yasBekle(B, 1050);
+    await B.click('.tb-anlik'); await bekle(250);
+    const oscSon = await B.evaluate(() => window.__osc), kapandi = !(await anlik(B));
+    ok('1 saniyeden sonraki dokunuş pencereyi hemen kapatıyor; ses ikinci kez çalmıyor', oscSon === 6 && kapandi, `${oscSon} ${kapandi}`);
     await B.evaluate(() => sessionStorage.removeItem('__iphone'));
 
     // ---------- 7. Genel odada tebrik/dürt yok ----------

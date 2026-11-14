@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="6644566f6340">
+<meta name="td-surum" content="4b373e058f41">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -2322,8 +2322,10 @@ function tebrikAnlik(adlar, mola, hedef) {
   const alt = hedef ? (adlar.length ? `${isimler(adlar)} de seni tebrik etti` : "") : mola ? (adlar.length > 1 ? "Çalışırken gönderdiler" : "Çalışırken gönderdi") : "";
   el.innerHTML = `<span class="kutu" role="dialog" aria-live="polite"><span class="e" aria-hidden="true">👏</span><b>${esc(baslik)}</b>${alt ? `<span class="s">${esc(alt)}</span>` : ""}</span>`;
   let sesBekliyor = false;
+  const acilis = Date.now(); el.dataset.acildi = String(acilis);
   el.addEventListener("click", () => {
     if (sesBekliyor) { sesBekliyor = false; tebrikSesi(true); }        // açılışta çalamadıysa: dokunuşla çalar
+    if (Date.now() - acilis < 1000) return;                            // ilk 1 saniye kapanmaz: yanlışlıkla dokunmaya karşı
     el.classList.add("gidiyor"); setTimeout(() => el.remove(), 150);
   });
   document.body.appendChild(el);
