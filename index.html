@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="07e271c1530c">
+<meta name="td-surum" content="5ba2863720b4">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -268,6 +268,12 @@ select, input[type="number"], input[type="date"], input[type="text"], textarea {
 /* Oda kutusu: içerik parmakla kayar (kutu sabit kalır) */
 #onlinePanel { overflow: hidden; overflow: clip; }
 #onlinePanel .rbody { will-change: transform; }
+/* Telefonda oda çerçevesi sabit yükseklikte: kişi listesi kendi içinde kayar, sayfa uzamaz; altta sekme geçişi için boşluk kalır */
+#onlinePanel.sabit { display: flex; flex-direction: column; }
+#onlinePanel.sabit .rtabs-wrap { flex: none; }
+#onlinePanel.sabit .rbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#onlinePanel.sabit .rbody > .panel-head, #onlinePanel.sabit .rbody > .tc-actions { flex: none; }
+#onlinePanel.sabit .kisiler { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; margin: 0 -4px; padding: 0 4px; }
 /* Tebrik ve dürtme */
 .kd-chip { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; white-space: nowrap; }
 .kd-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -2527,9 +2533,12 @@ function renderSalon() {
   const canAdd = S.mode === "cloud" && !readOnly();
   const switcher = rooms.length || canAdd ? `<div class="rtabs-wrap"><div class="rtabs" role="group" aria-label="Odalar">${tab(GENEL, "Genel")}${rooms.map(l => tab(roomCode(l), l)).join("")}</div>
     ${canAdd ? `<button class="radd" type="button" data-room-plus aria-label="Oda kur ya da odaya katıl">${ICON_PLUS}</button>` : ""}</div>` : "";
-  const changed = setHTML($("onlinePanel"), `${switcher}<div class="rbody"><div class="panel-head"><h2>${rc === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</h2><span class="small muted num">${ppl.length} kişi · ${studying} çalışıyor</span></div>${online}
+  const eskiListe = $("onlinePanel").querySelector(".kisiler"), eskiY = eskiListe ? eskiListe.scrollTop : 0;
+  const changed = setHTML($("onlinePanel"), `${switcher}<div class="rbody"><div class="panel-head"><h2>${rc === GENEL ? "Genel" : esc(myRoomLabel()) + " odası"}</h2><span class="small muted num">${ppl.length} kişi · ${studying} çalışıyor</span></div><div class="kisiler">${online}</div>
     ${S.mode === "cloud" && !readOnly() ? `<div class="tc-actions" style="justify-content:flex-start"><button class="btn sm" type="button" data-invite>Arkadaş davet et</button></div>` : ""}</div>`);
   fitSalon();
+  if (changed && S.kisiOda === rc && eskiY) { const l = $("onlinePanel").querySelector(".kisiler"); if (l) l.scrollTop = eskiY; }   // kaydırılan yer korunur
+  S.kisiOda = rc;
   if (changed && S.lastRoomTab !== rc) {                               // seçili oda sekmesi görünür olsun (çok oda varsa)
     S.lastRoomTab = rc;
     const a = $("onlinePanel").querySelector('.rtabs [aria-pressed="true"]'), bar = a && a.parentElement;
@@ -2541,11 +2550,12 @@ function renderSalon() {
 const SALON_BOSLUK = 64;
 function fitSalon() {
   const pnl = $("onlinePanel"); if (!pnl) return;
-  if (!isPhone() || S.tab !== "salon") { pnl.style.minHeight = ""; return; }
+  if (!isPhone() || S.tab !== "salon") { pnl.style.minHeight = ""; pnl.style.height = ""; pnl.classList.remove("sabit"); return; }
   const top = pnl.getBoundingClientRect().top + window.scrollY;
   const nav = document.querySelector("nav.tabs"), strip = $("timerStrip");
   const alt = (nav ? nav.getBoundingClientRect().height : 0) + (strip && !strip.hidden ? strip.getBoundingClientRect().height + 6 : 0);
-  pnl.style.minHeight = Math.max(220, Math.floor(window.innerHeight - top - alt - SALON_BOSLUK)) + "px";
+  pnl.style.minHeight = ""; pnl.classList.add("sabit");
+  pnl.style.height = Math.max(260, Math.floor(window.innerHeight - top - alt - SALON_BOSLUK)) + "px";
 }
 window.addEventListener("resize", () => { if (S.tab === "salon") fitSalon(); });
 
