@@ -226,6 +226,30 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     ok('1 saniyeden sonraki dokunuş pencereyi hemen kapatıyor; ses ikinci kez çalmıyor', oscSon === 6 && kapandi, `${oscSon} ${kapandi}`);
     await B.evaluate(() => sessionStorage.removeItem('__iphone'));
 
+    // ---------- 6d. Arka plandan dönüş: iPhone'da eski ses bağlamı sessiz kalabilir → dokununca yeniden kurulur ----------
+    await B.reload(); await bekle(2500);
+    await B.evaluate(() => {
+      window.__osc = 0; window.__ac = 0;
+      const AC = window.AudioContext, o = AC.prototype.createOscillator;
+      AC.prototype.createOscillator = function () { window.__osc++; return o.call(this); };
+      window.AudioContext = function (...x) { window.__ac++; return new AC(...x); }; window.AudioContext.prototype = AC.prototype;
+    });
+    await B.click('header.top', { position: { x: 5, y: 5 } }); await bekle(300);   // ilk dokunuş: ses hazırlanır
+    const acIlk = await B.evaluate(() => window.__ac);
+    await B.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+    await bekle(200);
+    await S.sql(`delete from etkilesimler where gonderen = $1 and alici = $2 and tur = 'tebrik'`, [uC, uB]);
+    await S.sql(`insert into etkilesimler (gonderen, alici, tur, oda, gun) values ($1, $2, 'tebrik', '', (select td_bugun()))`, [uC, uB]);
+    await B.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')); });
+    const donus = await anlikBekle(B, 6000);
+    await bekle(700);
+    const oscDonus = await B.evaluate(() => window.__osc);
+    ok('Arka plandan dönünce tebrik penceresi çıkıyor; ses dokunuşa bırakılıyor (sessiz kalmış bağlamda çalınmıyor)', /Cem seni tebrik etti/.test(donus) && acIlk === 1 && oscDonus === 0, `${donus} ${acIlk} ${oscDonus}`);
+    await yasBekle(B, 1050);
+    await B.click('.tb-anlik'); await bekle(300);
+    const sonrasi = await B.evaluate(() => ({ ac: window.__ac, osc: window.__osc, kapandi: !document.querySelector('.tb-anlik') }));
+    ok('Dokununca ses sistemi baştan kuruluyor, tebrik sesi çalıyor, pencere kapanıyor', sonrasi.ac === 2 && sonrasi.osc === 6 && sonrasi.kapandi, JSON.stringify(sonrasi));
+
     // ---------- 7. Genel odada tebrik/dürt yok ----------
     const genelde = await A.evaluate(() => { const g = [...document.querySelectorAll('#onlinePanel [data-room]')].find(x => /Genel/.test(x.textContent)); if (g) g.click(); return !!g; });
     await bekle(800);

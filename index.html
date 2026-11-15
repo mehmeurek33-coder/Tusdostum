@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="e263f7aeb111">
+<meta name="td-surum" content="ad1ec5b7331f">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -1042,9 +1042,14 @@ function goals() {
 const BREAK_WARN_OPTS = [0, 5, 10, 15, 20, 25, 30];
 const breakWarnMin = () => { const v = Number((S.settings || {}).breakWarn); return BREAK_WARN_OPTS.includes(v) ? v : 0; };
 const breakOver = (t, now = Date.now()) => { const w = breakWarnMin(); return !!w && onBreak(t) && curBreak(t, now) >= w * 60000; };
-let actx = null;
+let actx = null, actxGizlendi = false;
+// iPhone: uygulama arka plana gidip gelince ses bağlamı "çalışıyor" görünüp sessiz kalabiliyor. Arka plana gidildiyse
+// bir sonraki dokunuşta bağlam kapatılıp yeniden kurulur; o zamana kadar tebrik sesi dokunuşa bırakılır.
+document.addEventListener("visibilitychange", () => { if (document.hidden && actx) actxGizlendi = true; });
 function armSound() {                                              // ses yalnızca bir dokunuşla açılabilir; "Mola ver"e basılınca hazırlanır
   try {
+    if (actx && actxGizlendi) { try { actx.close(); } catch {} actx = null; }
+    actxGizlendi = false;
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     if (actx.state !== "running") actx.resume();
     // iPhone: dokunuş anında kısa bir sessiz ses çalınmazsa ses kilidi açılmayabilir
@@ -1084,7 +1089,8 @@ function tebrikSesi(dokunus) {
         });
       });
     };
-    if (dokunus) { if (actx.state !== "running") actx.resume().catch(() => {}); cal(); return Promise.resolve(true); }
+    if (dokunus) { if (actxGizlendi) armSound(); if (actx.state !== "running") actx.resume().catch(() => {}); cal(); return Promise.resolve(true); }
+    if (actxGizlendi) return Promise.resolve(false);                 // arka plandan dönüldü: ses ilk dokunuşta yeniden kurulup çalar
     if (actx.state === "running") { cal(); return Promise.resolve(true); }
     // izin yoksa açma isteği dokunuşa kadar askıda kalabilir: 400 ms içinde açılmazsa "çalamadı" sayılır, sonradan çalmaz
     return new Promise(sonuc => {
@@ -1099,7 +1105,7 @@ function tebrikSesi(dokunus) {
 document.addEventListener("visibilitychange", () => { if (!document.hidden && actx && actx.state !== "running") { try { actx.resume().catch(() => {}); } catch {} } });
 // Her dokunuşta (ses kapalıysa) ses yeniden hazırlanır: iPhone arka plana geçince sesi kapatır. iPhone yalnızca
 // "touchend" ve "click" anında açılmaya izin verir, "pointerdown"da vermez.
-["touchend", "click"].forEach(ad => document.addEventListener(ad, () => { if (!actx || actx.state !== "running") armSound(); }, { capture: true, passive: true }));
+["touchend", "click"].forEach(ad => document.addEventListener(ad, () => { if (!actx || actx.state !== "running" || actxGizlendi) armSound(); }, { capture: true, passive: true }));
 function makeAlarmWav(silenceSec, beepSec = 8) {
   const rate = 8000, n = Math.floor((silenceSec + beepSec) * rate);
   const buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer);

@@ -1,5 +1,5 @@
 // TusDostum · servis çalışanı: çevrimdışı kabuk + bildirimler
-const SURUM = "td-e263f7aeb111";                                              // yap.py her derlemede dosyaların özetini yazar
+const SURUM = "td-ad1ec5b7331f";                                              // yap.py her derlemede dosyaların özetini yazar
 const KABUK = ["./", "index.html", "config.js", "altyapi.js", "vendor/supabase.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png", "icons/badge-96.png"];
 
