@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="ad1ec5b7331f">
+<meta name="td-surum" content="07e271c1530c">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -1435,6 +1435,11 @@ function peerElapsed(p, now = Date.now()) {                      // yalnızca ye
   const cap = st === "calisiyor" ? clampNum(p.pr.rem, 0, MAX_RUN_MS) : delta;
   return base + Math.min(delta, cap);
 }
+// Odadaki yeşil sayaç: son moladan beri (son oturum). Toplam zaten "bugün" satırında; rem = 3 saat sınırına kalan.
+function peerRun(p, now = Date.now()) {
+  const base = MAX_RUN_MS - clampNum(p.pr.rem, 0, MAX_RUN_MS);
+  return Math.min(MAX_RUN_MS, base + Math.max(0, now - (p.updatedAt || now)));
+}
 // Canlı sıralama: kaydedilmiş oturumlara o an işleyen kronometrenin BUGÜNE düşen kısmı eklenir
 function liveMs(uid, ppl) {
   const tk = todayKey();
@@ -2060,12 +2065,15 @@ function alignedNow(now = Date.now()) { const a = phaseAnchor(); return a + Math
 function liveShown(p) {
   const st = p.pr && p.pr.st;
   if (st !== "calisiyor" && st !== "mola") return null;
-  if (p.isMe && S.timer) { const sh = shownTimes(S.timer, Date.now()); return onBreak(S.timer) ? sh.brk : sh.work; }
-  const an = alignedNow(), fl = v => Math.floor(Math.max(0, v) / 1000) * 1000;
+  const fl = v => Math.floor(Math.max(0, v) / 1000) * 1000;
+  const sonOturum = (t, now) => fl(t.runStart ? Math.min(Math.max(0, now - t.runStart), MAX_RUN_MS) : 0);
+  if (p.isMe && S.timer) { const now = Date.now(); return onBreak(S.timer) ? shownTimes(S.timer, now).brk : sonOturum(S.timer, now); }
+  const an = alignedNow();
   if (p.pr.uid == null) {                                           // canlı bağlantı yok: kayıtlı kronometreden hesapla
     const t = normTimer((S.roots[p.key] || {}).timer);
-    if (t) return fl(onBreak(t) ? curBreak(t, an) : timerWork(t, an));
+    if (t) return onBreak(t) ? fl(curBreak(t, an)) : sonOturum(t, an);
   }
+  if (st === "calisiyor") return fl(peerRun(p, an));
   const v = peerElapsed(p, an);
   return v === null ? null : fl(v);
 }
