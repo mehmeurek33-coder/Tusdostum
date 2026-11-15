@@ -277,6 +277,18 @@ select tdt.yaz('Haftalık özet: bu hafta çalışmayan ya da bildirimi kapalı 
   not exists (select 1 from td_haftalik_ozet() where uid = '44444444-4444-4444-4444-444444444444'));
 set role authenticated; set request.jwt.claim.sub = :A;
 
+-- ===== Ad seçmemiş kişi başkalarına görünmez =====
+reset role;
+insert into auth.users (id, email) values ('88888888-8888-8888-8888-888888888888', 'adsiz@x') on conflict do nothing;
+insert into profiller (uid, veri) values ('88888888-8888-8888-8888-888888888888', '{"av":2}') on conflict (uid) do update set veri = excluded.veri;
+set role authenticated; set request.jwt.claim.sub = :A;
+select tdt.yaz('Ad seçmemiş kişinin profili başkalarına gösterilmiyor', (select count(*) from profiller where uid = '88888888-8888-8888-8888-888888888888') = 0);
+set request.jwt.claim.sub = '88888888-8888-8888-8888-888888888888';
+select tdt.yaz('Ad seçmemiş kişi kendi profilini görüyor', (select count(*) from profiller where uid = auth.uid()) = 1);
+select td_profil_guncelle('{"nick":"Yeni"}') is not null;
+set request.jwt.claim.sub = :A;
+select tdt.yaz('Ad seçince profili başkalarına görünüyor', (select veri ->> 'nick' from profiller where uid = '88888888-8888-8888-8888-888888888888') = 'Yeni');
+
 -- ===== Boyut sınırı =====
 select tdt.yaz('Aşırı büyük profil reddedilir',
   tdt.reddedilir($$update profiller set veri = jsonb_build_object('x', (select string_agg(md5(i::text), '') from generate_series(1, 4000) i)) where uid = auth.uid()$$));

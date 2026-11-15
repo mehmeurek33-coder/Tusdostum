@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="5ba2863720b4">
+<meta name="td-surum" content="e13e1124461a">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -1431,6 +1431,9 @@ function presentPeople() {
     else out.set(uid, { key: uid, isMe: false, live: false, updatedAt: now, pr: { st: "offline" } });
   }
   for (const [k, lp] of live) if (!out.has(k) && !S.roots[k]) out.set(k, lp);       // henüz kaydı olmayan ama sayfası açık kişi
+  // Ad seçmemiş kişi (kendin hariç) listede gösterilmez
+  const adli = uid => { const r = S.roots[uid]; return (r && typeof r.nick === "string" && r.nick.trim()) || (S.profiles[uid] && S.profiles[uid].name); };
+  for (const k of [...out.keys()]) if (k !== me && !adli(k)) out.delete(k);
   return [...out.values()].sort((a, b) => (ST_RANK[b.pr.st] - ST_RANK[a.pr.st]) || (b.isMe - a.isMe));
 }
 function peerElapsed(p, now = Date.now()) {                      // yalnızca yerel saat farkları kullanılır
@@ -3144,7 +3147,7 @@ function captureFocus(container) {
   };
 }
 function releaseFocus() { if (focusRelease) { const f = focusRelease; focusRelease = null; f(); } }
-function closeModal() { const m = $("modalOverlay"); m.hidden = true; m.innerHTML = ""; m.__h = null; releaseFocus(); syncLock(); }
+function closeModal() { if (S.adZorunlu && $("joinForm")) return; const m = $("modalOverlay"); m.hidden = true; m.innerHTML = ""; m.__h = null; releaseFocus(); syncLock(); }
 function openModal(html) {
   const m = $("modalOverlay");
   m.innerHTML = html; m.__h = null; m.hidden = false;
@@ -3331,7 +3334,7 @@ function maybeOnboard() {
     if (location.hash.startsWith("#oda-")) go("salon");
   }
   const nick = typeof myRoot().nick === "string" ? myRoot().nick.trim() : "";
-  if (S.mode === "cloud" && !nick && !S.welcomed && !PREF.welcomed) openJoin(null);
+  if (S.mode === "cloud" && !nick) openJoin(null);                  // ad seçmeden uygulamaya geçilmez
 }
 function saveRooms(list) {
   const rooms = roomLabelsOf({ rooms: list });
@@ -3348,15 +3351,20 @@ function openJoin(inv) {
     ${full ? `<label class="field">Çıkılacak oda<select id="jDrop">${cur.map((l, i) => `<option value="${i}">${esc(l)}</option>`).join("")}</select><span class="hint">En çok ${MAX_ROOMS} odada olabilirsin; katılmak için birinden çıkman gerekiyor.</span></label>` : ""}
     <label class="field">Görünen ad<input type="text" id="jNick" maxlength="24" value="${esc(nick)}" placeholder="ör. Mehmet K." autocomplete="off"></label>
     <div class="err" id="jErr" role="alert"></div>`;
+  // Adı olmayan kişi pencereyi ad yazmadan kapatamaz (kapat düğmeleri yok, arka plana dokunmak kapatmaz)
+  S.adZorunlu = S.mode === "cloud" && !nick;
   openModal(formShell("joinForm", "joinTitle", inv ? "Odaya katıl" : "Hoş geldin", body,
-    `<button class="btn" type="button" data-close-modal>Şimdi değil</button><button class="btn primary" type="submit">${inv ? "Katıl" : "Başla"}</button>`));
+    `${S.adZorunlu ? "" : `<button class="btn" type="button" data-close-modal>Şimdi değil</button>`}<button class="btn primary" type="submit">${inv ? "Katıl" : "Başla"}</button>`));
   const f = $("joinForm");
+  if (S.adZorunlu) f.querySelectorAll("[data-close-modal]").forEach(x => x.remove());
   const done = () => { PREF.welcomed = true; savePref(); if (inv) { S.invite = null; closeModal(); if (location.hash.startsWith("#oda-")) go("salon"); } else closeModal(); };
   f.addEventListener("click", e => { if (e.target.closest("[data-close-modal]")) done(); });
   let busy = false;
   f.addEventListener("submit", async e => {
     e.preventDefault();
     if (readOnly() || busy) return;
+    const ad = ($("jNick").value || "").trim().slice(0, 24);
+    if (ad.length < 2) { $("jErr").textContent = "Odadakilerin seni tanıması için bir ad yaz (en az 2 harf)."; $("jNick").focus(); return; }
     const list = cur.slice();
     let lab = "";
     if (inv) {
@@ -3372,7 +3380,8 @@ function openJoin(inv) {
       if (full) list.splice(clampNum($("jDrop").value, 0, list.length - 1), 1);
       if (k !== GENEL && list.length < MAX_ROOMS) list.push(lab);
     }
-    writeRoot({ nick: ($("jNick").value || "").trim().slice(0, 24) });
+    writeRoot({ nick: ad });
+    S.adZorunlu = false;
     if (inv) { saveRooms(list); setActiveRoom(roomCode(inv)); }
     syncShared(true);
     pushPresence(); done(); render();

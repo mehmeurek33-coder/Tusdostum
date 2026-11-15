@@ -134,7 +134,8 @@ alter table public.yoneticiler enable row level security;
 alter table public.engelliler enable row level security;
 
 drop policy if exists profil_oku on public.profiller;
-create policy profil_oku on public.profiller for select to authenticated using (true);
+-- Ad seçmemiş kişinin profili başkalarına gösterilmez (kendisi görür)
+create policy profil_oku on public.profiller for select to authenticated using (uid = auth.uid() or coalesce(btrim(veri ->> 'nick'), '') <> '');
 drop policy if exists profil_ekle on public.profiller;
 create policy profil_ekle on public.profiller for insert to authenticated with check (uid = auth.uid() and not public.td_engelli_miyim());
 drop policy if exists profil_guncelle on public.profiller;
