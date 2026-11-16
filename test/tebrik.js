@@ -268,6 +268,28 @@ const cek = async (p, ad) => { if (CEK) await p.screenshot({ path: require('path
     ok('Dürtmeleri kapalı kişinin profilinde "Dürt" düğmesi yok', !(await dugme(B, 'durt')).var);
     await profilKapat(B);
 
+    // ---------- 8b. Dürtme kutusu yukarı itilince kapanır (iPhone bildirimi gibi) ----------
+    await S.sql(`insert into etkilesimler (gonderen, alici, tur, oda, gun) values ($1, $2, 'durt', '', (select td_bugun()))`, [uC, uB]);
+    await B.evaluate(() => { location.hash = 'bugun'; });
+    await B.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    let kutuVar = false;
+    for (let i = 0; i < 30 && !kutuVar; i++) { await bekle(300); kutuVar = !!(await B.$('#etkKartlar .kd-card')); }
+    const it = (adim, ara) => B.evaluate(async ([adim, ara]) => {
+      const c = document.querySelector('#etkKartlar .kd-card'); const r = c.getBoundingClientRect(), x = r.left + 60, y0 = r.top + 30;
+      const tt = y => new Touch({ identifier: 1, target: c, clientX: x, clientY: y });
+      const ev = (tip, y) => c.dispatchEvent(new TouchEvent(tip, { touches: tip === 'touchend' ? [] : [tt(y)], changedTouches: [tt(y)], bubbles: true, cancelable: true }));
+      ev('touchstart', y0); for (let i = 1; i <= 6; i++) { await new Promise(z => setTimeout(z, ara)); ev('touchmove', y0 - i * adim); } ev('touchend', y0 - 6 * adim);
+    }, [adim, ara]);
+    await it(3, 60); await bekle(400);                               // yavaşça 18 px: yerine dönmeli
+    const yerinde = await B.evaluate(() => { const c = document.querySelector('#etkKartlar .kd-card'); return !!c && !c.style.transform; });
+    ok('Dürtme kutusu az itilince yerine dönüyor', kutuVar && yerinde, `${kutuVar} ${yerinde}`);
+    await it(14, 16); await bekle(600);                              // hızlıca 84 px yukarı
+    ok('Dürtme kutusu yukarı itilince kayıp kapanıyor', !(await B.$('#etkKartlar .kd-card')));
+    const kapali = await B.evaluate(() => (JSON.parse(localStorage.getItem('tusdostum.pref') || '{}').durtKapat || []));
+    const durtId = (await S.sql(`select id from etkilesimler where gonderen = $1 and alici = $2 and tur = 'durt'`, [uC, uB]))[0].id;
+    await B.reload(); await bekle(3500);
+    ok('Kapatılan dürtme kutusu yeniden açılışta geri gelmiyor', !(await B.$('#etkKartlar .kd-card')), JSON.stringify([durtId, kapali, await B.evaluate(() => (document.querySelector('#etkKartlar') || {}).textContent)]));
+
     // ---------- 9. Kayıtlar ve istatistikler etkilenmedi ----------
     const kayitlar = await S.sql(`select count(*)::int n from ozel_belgeler where uid = any($1) and (belge like 'kron-%' or belge like 'elle-%')`, [[uA, uC]]);
     ok('Tebrik/dürtme hiçbir çalışma kaydı oluşturmadı', kayitlar[0].n === 0, JSON.stringify(kayitlar));

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="e13e1124461a">
+<meta name="td-surum" content="910bf2db61a6">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -2443,16 +2443,17 @@ function tebrikAnlik(adlar, mola, hedef) {
   setTimeout(() => tebrikSesi().then(caldi => { if (!caldi && el.isConnected) sesBekliyor = true; }), 150);   // yazı belirirken
   try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
 }
+function durtKapali(id) { return (PREF.durtKapat || []).map(String).includes(String(id)); }
 function renderEtkKartlar() {
   const el = $("etkKartlar"); if (!el) return;
   const e = ETK();
   // Çalışmaya başlayınca dürtme kartı amacına ulaşmıştır: kapanmış sayılır, molada geri gelmez
   if (S.timer && !onBreak(S.timer)) {
-    const yeni = (S.durtler || []).map(x => x.id).filter(id => !(PREF.durtKapat || []).includes(id));
+    const yeni = (S.durtler || []).map(x => String(x.id)).filter(id => !durtKapali(id));
     if (yeni.length) { PREF.durtKapat = [...(PREF.durtKapat || []), ...yeni].slice(-40); savePref(); }
   }
-  const kapali = PREF.durtKapat || [];
-  const l = (S.durtler || []).filter(x => !kapali.includes(x.id));
+  const kapali = (PREF.durtKapat || []).map(String);
+  const l = (S.durtler || []).filter(x => !kapali.includes(String(x.id)));
   if (!l.length && el.querySelector(".kd-card:not(.gidiyor)")) {          // yumuşakça kaybolur
     el.querySelectorAll(".kd-card").forEach(c => c.classList.add("gidiyor"));
     clearTimeout(el.__t); el.__t = setTimeout(() => { if (!el.querySelector(".kd-card:not(.gidiyor)")) setHTML(el, ""); }, 420);
@@ -2467,13 +2468,40 @@ function renderEtkKartlar() {
 }
 document.addEventListener("click", e => {
   const k = e.target.closest("[data-durt-kapat]");
-  if (k) { PREF.durtKapat = [...(PREF.durtKapat || []), Number(k.dataset.durtKapat)].slice(-40); savePref(); renderEtkKartlar(); return; }
+  if (k) { PREF.durtKapat = [...(PREF.durtKapat || []), String(k.dataset.durtKapat)].slice(-40); savePref(); renderEtkKartlar(); return; }
   if (e.target.closest("[data-durt-basla]")) {
-    PREF.durtKapat = [...(PREF.durtKapat || []), ...(S.durtler || []).map(x => x.id)].slice(-40); savePref();
+    PREF.durtKapat = [...(PREF.durtKapat || []), ...(S.durtler || []).map(x => String(x.id))].slice(-40); savePref();
     if (!S.timer && !readOnly()) startTimer();
     renderEtkKartlar();
   }
 });
+// Dürtme kutusu iPhone bildirimi gibi: parmakla yukarı itince kayıp kapanır (× ile aynı), az itilirse yerine döner
+(() => {
+  let d = null;
+  const birak = (c, x) => { c.style.transition = x ? "transform .2s ease-in, opacity .2s ease-in" : "transform .25s cubic-bezier(.16,1,.3,1), opacity .25s"; c.style.transform = x ? "translateY(-130%)" : ""; c.style.opacity = x ? "0" : ""; };
+  document.addEventListener("touchstart", e => {
+    const c = e.target.closest("#etkKartlar .kd-card");
+    d = c && e.touches.length === 1 ? { c, x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, dikey: null, son: [{ y: e.touches[0].clientY, t: performance.now() }] } : null;
+  }, { passive: true });
+  document.addEventListener("touchmove", e => {
+    if (!d) return;
+    const t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+    if (d.dikey === null) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; d.dikey = Math.abs(dy) > Math.abs(dx) && dy < 0; if (!d.dikey) { d = null; return; } d.c.style.transition = "none"; }
+    e.preventDefault();
+    d.dy = Math.min(0, dy) + Math.max(0, dy) * 0.2;                   // aşağı çekmek esner
+    d.c.style.transform = `translateY(${d.dy}px)`; d.c.style.opacity = String(Math.max(0.2, 1 + d.dy / 160));
+    d.son.push({ y: t.clientY, t: performance.now() }); if (d.son.length > 5) d.son.shift();
+  }, { passive: false });
+  document.addEventListener("touchend", () => {
+    if (!d || !d.dikey) { d = null; return; }
+    const { c, dy, son } = d; d = null;
+    const a = son[0], b = son[son.length - 1], hiz = (b.y - a.y) / Math.max(16, b.t - a.t);
+    if (!(dy < -40 || (hiz < -0.4 && dy < -12))) { birak(c, false); return; }
+    birak(c, true);
+    const xb = c.querySelector("[data-durt-kapat]"), id = xb ? String(xb.dataset.durtKapat) : "";
+    setTimeout(() => { c.remove(); if (id) { PREF.durtKapat = [...(PREF.durtKapat || []), id].slice(-40); savePref(); } renderEtkKartlar(); }, 210);
+  }, { passive: true });
+})();
 // Gelen tebrik ve dürtmelere bak. Çalışırken tebrik gösterilmez; mola verince ya da çalışmıyorken bir kez gösterilir.
 let etkMesgul = false;
 const HEDEF_TEBRIK_DK = 300;
