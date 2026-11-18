@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="5635e9965a76">
+<meta name="td-surum" content="3d901f81787a">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -694,7 +694,10 @@ const MAX_ROOMS = 5;                  // bir kişi en çok kaç odada olabilir
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, "0");
 const dkey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const todayKey = () => dkey(new Date());
+// Gün 02:00'de yenilenir: gece 00:00–02:00 arası bir önceki güne sayılır (gece çalışanlar için)
+const GUN_KAYMA_MS = 2 * 3600 * 1000;
+const gunOf = ms => dkey(new Date(ms - GUN_KAYMA_MS));             // bir anın ait olduğu gün
+const todayKey = () => gunOf(Date.now());
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtNum = n => Math.round(n).toLocaleString("tr-TR");
 const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -714,7 +717,7 @@ function fmtClock(ms) {
 function parseKey(k) { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); }
 function daysBetween(a, b) { return Math.round((parseKey(b) - parseKey(a)) / 86400000); }
 function daysAgo(k) { return daysBetween(k, todayKey()); }
-function agoKey(n) { const d = new Date(); d.setDate(d.getDate() - n); return dkey(d); }
+function agoKey(n) { const d = parseKey(todayKey()); d.setDate(d.getDate() - n); return dkey(d); }
 function relDay(k) {
   const n = daysAgo(k);
   if (n <= 0) return "bugün";
@@ -733,8 +736,8 @@ function ymShift(ym, n) { const d = new Date(+ym.slice(0, 4), +ym.slice(5) - 1 +
 function monthsBetween(fromYm, toYm) { const out = []; let y = fromYm; let guard = 0; while (y <= toYm && guard++ < 600) { out.push(y); y = ymShift(y, 1); } return out; }
 function mondayOf(k) { const d = parseKey(k); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return dkey(d); }
 function mondayKey() { return mondayOf(todayKey()); }
-function monthStartKey(back) { const n = new Date(); return dkey(new Date(n.getFullYear(), n.getMonth() - back, 1)); }
-function midnightOf(k) { return parseKey(k).getTime(); }
+function monthStartKey(back) { const n = parseKey(todayKey()); return dkey(new Date(n.getFullYear(), n.getMonth() - back, 1)); }
+function midnightOf(k) { return parseKey(k).getTime() + GUN_KAYMA_MS; }   // günün başladığı an (02:00)
 const uidGen = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 // Oda adı yazıldığı gibi saklanır ve gösterilir (Türkçe harfler korunur).
 function roomLabel(v) { return String(v ?? "").trim().replace(/\s+/g, " ").slice(0, 32) || ROOM_DEFAULT; }
@@ -821,10 +824,12 @@ function timerWork(t, now = Date.now()) {
 }
 // Son moladan (ya da "devam ediyorum"dan) beri çalışılan süre; hiç mola verilmediyse null
 function sinceBreak(t, now = Date.now()) { return t && t.runStart && num(t.workMs) > 0 ? Math.min(Math.max(0, now - t.runStart), MAX_RUN_MS) : null; }
-function curBreak(t, now = Date.now()) { return t && t.breakStart ? Math.max(0, now - t.breakStart) : 0; }   // süren molanın kendi süresi
+// Süren mola 3 saatte durur (unutulmuş molada sayaç ve kayıt şişmesin); kronometre açık kalır
+const MAX_BREAK_MS = 3 * 3600 * 1000;
+function curBreak(t, now = Date.now()) { return t && t.breakStart ? Math.min(MAX_BREAK_MS, Math.max(0, now - t.breakStart)) : 0; }   // süren molanın kendi süresi
 function timerBreak(t, now = Date.now()) {
   if (!t) return 0;
-  return num(t.breakMs) + (t.breakStart ? Math.max(0, now - t.breakStart) : 0) + runOverflow(t, now);
+  return num(t.breakMs) + curBreak(t, now) + runOverflow(t, now);
 }
 const onBreak = t => !!(t && t.breakStart);
 function normTimer(raw) {
@@ -843,7 +848,7 @@ function normTimer(raw) {
 function todayShare(t, now = Date.now()) {
   if (!t) return 0;
   const tk = todayKey(), work = timerWork(t, now);
-  if (dkey(new Date(t.st)) === tk) return work;
+  if (gunOf(t.st) === tk) return work;
   const mid = midnightOf(tk);
   const span = Math.max(1, now - t.st);
   return Math.max(0, Math.round(work * Math.min(1, (now - mid) / span)));
@@ -880,7 +885,7 @@ function normManual(id, e) {
 function strictOk(e, now) {
   if (!e.st || !e.en || e.en <= e.st) return false;
   if (e.en > now + 5 * 60000) return false;
-  if (Math.abs(daysBetween(dkey(new Date(e.st)), e.d)) > 1) return false;
+  if (Math.abs(daysBetween(gunOf(e.st), e.d)) > 1) return false;
   if (e.mm > (e.en - e.st) / 60000 + 1) return false;
   if (e.m < 1 || e.m > e.mm) return false;
   if (e.q > e.m * Q_PER_MIN) return false;
@@ -944,7 +949,7 @@ function dayTimed(uid) {
 function startKeyOf(uid, son) {
   let f = null;
   if (uid === myId()) f = firstDayKey();
-  else { const j = num((S.roots[uid] || {}).joinedAt); if (j > 1e12) f = dkey(new Date(j)); }
+  else { const j = num((S.roots[uid] || {}).joinedAt); if (j > 1e12) f = gunOf(j); }
   for (const d of Object.keys(son || {})) if (son[d].m > 0 && (!f || d < f)) f = d;
   return f;
 }
@@ -1405,7 +1410,7 @@ function avatarHTML(id, cls = "") {
 const ST_RANK = { calisiyor: 4, mola: 3, online: 2, offline: 1 };
 function timerPr(t, now) {
   return { st: onBreak(t) ? "mola" : "calisiyor", s: t.s, tt: t.t, work: timerWork(t, now), brk: curBreak(t, now),
-    rem: t.runStart ? Math.max(0, MAX_RUN_MS - (now - t.runStart)) : 0, sd: dkey(new Date(t.st)) };
+    rem: t.runStart ? Math.max(0, MAX_RUN_MS - (now - t.runStart)) : 0, sd: gunOf(t.st) };
 }
 function livePeers() {
   const m = new Map();
@@ -1425,7 +1430,8 @@ function presentPeople() {
   for (const uid of memberIds()) {
     const lp = live.get(uid);
     const t = uid === me ? S.timer : normTimer((S.roots[uid] || {}).timer);
-    const fresh = !!t && timerWork(t, now) + timerBreak(t, now) <= 20 * 3600 * 1000;   // unutulmuş kronometre sayılmaz
+    const hamMola = t && t.breakStart ? Math.max(0, now - t.breakStart) : 0;      // 3 saat sınırı olmadan geçen mola
+    const fresh = !!t && timerWork(t, now) + num(t.breakMs) + runOverflow(t, now) + hamMola <= 20 * 3600 * 1000;   // unutulmuş kronometre sayılmaz
     if (uid === me) out.set(uid, { key: uid, isMe: true, live: true, updatedAt: now, pr: t ? timerPr(t, now) : { st: "online" } });
     else if (lp && (lp.pr.st === "calisiyor" || lp.pr.st === "mola")) out.set(uid, lp);
     else if (fresh) out.set(uid, { key: uid, isMe: false, live: !!lp, updatedAt: now, pr: timerPr(t, now) });
@@ -1443,7 +1449,7 @@ function peerElapsed(p, now = Date.now()) {                      // yalnızca ye
   if (st !== "calisiyor" && st !== "mola") return null;
   const base = clampNum(st === "mola" ? p.pr.brk : p.pr.work, 0, 30 * 864e5);
   const delta = Math.max(0, now - (p.updatedAt || now));
-  const cap = st === "calisiyor" ? clampNum(p.pr.rem, 0, MAX_RUN_MS) : delta;
+  const cap = st === "calisiyor" ? clampNum(p.pr.rem, 0, MAX_RUN_MS) : Math.max(0, MAX_BREAK_MS - base);   // mola da 3 saatte durur
   return base + Math.min(delta, cap);
 }
 // Odadaki yeşil sayaç: son moladan beri (son oturum). Toplam zaten "bugün" satırında; rem = 3 saat sınırına kalan.
@@ -1592,7 +1598,7 @@ function ensureFirstDay() {
 // Kronometreli oturumu kaydet: gece yarısını aşıyorsa iki güne bölünür (C3)
 function saveTimedSession(pre, m, q, c, w, priv) {
   const base = { s: pre.s, t: pre.t, bn: clampNum(pre.bn, 0, 999), n: priv.n, k: priv.k };
-  const stD = dkey(new Date(pre.st)), enD = dkey(new Date(pre.en - 1));
+  const stD = gunOf(pre.st), enD = gunOf(pre.en - 1);
   const parts = [];
   if (!pre.editing && stD !== enD && daysBetween(stD, enD) === 1) {
     const mid = midnightOf(enD), r1 = (mid - pre.st) / (pre.en - pre.st);
@@ -1689,7 +1695,7 @@ function pushPresence() {
         work: t ? timerWork(t, now) : null,
         brk: t ? curBreak(t, now) : null,
         rem: t && t.runStart ? Math.max(0, MAX_RUN_MS - (now - t.runStart)) : 0,
-        sd: t ? dkey(new Date(t.st)) : null,
+        sd: t ? gunOf(t.st) : null,
         uid: S.me.id || null };
   for (const o of nrooms.values()) if (o.nr) o.nr.presence(body).catch(() => {});
 }
@@ -2065,7 +2071,7 @@ function renderTimerCard() {
 function shownTimes(t, now) {
   const run = t.runStart ? Math.floor(Math.min(Math.max(0, now - t.runStart), MAX_RUN_MS) / 1000) * 1000 : 0;
   const work = Math.floor(num(t.workMs) / 1000) * 1000 + run;
-  const brk = t.breakStart ? Math.floor(Math.max(0, now - t.breakStart) / 1000) * 1000 : 0;
+  const brk = t.breakStart ? Math.floor(curBreak(t, now) / 1000) * 1000 : 0;
   return { work, brk, sb: sinceBreak(t, now) === null ? null : run };
 }
 // Saniye sınırına hizalı tik: her saniye eşit sürede ilerler (250 ms'lik genel döngüden bağımsız).
@@ -2159,7 +2165,7 @@ function finishTimer() {
   if (mm < 1) { toast("Bir dakikadan kısa oturum kaydedilmez."); return; }
   const before = { ...t };
   setTimer({ ...t, workMs: work, runStart: null, breakMs: rest, breakStart: null });
-  openTimedForm({ s: t.s, t: t.t, st: t.st, en: now, mm, m: mm, b: Math.round(rest / 60000), bn: num(t.bn), d: dkey(new Date(t.st)), fromTimer: true, before });
+  openTimedForm({ s: t.s, t: t.t, st: t.st, en: now, mm, m: mm, b: Math.round(rest / 60000), bn: num(t.bn), d: gunOf(t.st), fromTimer: true, before });
 }
 
 // M5: kronometre şeridi (Bugün dışındaki sekmelerde)
@@ -2208,7 +2214,7 @@ function renderToday() {
   const qPct = Math.min(100, Math.round((today.q / g.q) * 100));
   const acc = pct(today.c, today.q);
   const days = new Set(timed.map(e => e.d));
-  let streak = 0; const d = new Date(); if (!days.has(dkey(d))) d.setDate(d.getDate() - 1);
+  let streak = 0; const d = parseKey(tk); if (!days.has(dkey(d))) d.setDate(d.getDate() - 1);
   while (days.has(dkey(d))) { streak++; d.setDate(d.getDate() - 1); }
   let examHTML;
   if (g.exam) {
@@ -3208,7 +3214,7 @@ function openTimedForm(pre) {
       <label class="field">Süre (dakika)<input type="number" id="fM" inputmode="numeric" min="1" max="${mmMax}" value="${startM}">
         <span class="hint">En fazla ${esc(fmtMin(mmMax))}</span></label>
     </div>
-    ${!pre.editing && pre.st && dkey(new Date(pre.st)) !== dkey(new Date(pre.en - 1)) ? `<p class="small muted" style="margin:0">Oturum gece yarısını aştı; süre iki güne oranlanarak bölünecek.</p>` : ""}
+    ${!pre.editing && pre.st && gunOf(pre.st) !== gunOf(pre.en - 1) ? `<p class="small muted" style="margin:0">Oturum gün sınırını (02:00) aştı; süre iki güne oranlanarak bölünecek.</p>` : ""}
     <div class="form-grid three">
       <label class="field">Soru<input type="number" id="fQ" inputmode="numeric" min="0" max="5000" value="${pre.q || ""}" placeholder="0"></label>
       <label class="field">Doğru<input type="number" id="fC" inputmode="numeric" min="0" max="5000" value="${pre.c || ""}" placeholder="0"></label>

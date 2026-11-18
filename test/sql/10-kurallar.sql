@@ -228,7 +228,9 @@ select tdt.yaz('Kullanıcı bildirim kuyruğunu çağıramaz', tdt.reddedilir($$
 reset request.jwt.claim.sub; set role service_role;
 create temp table eb as select * from td_bekleyen_etkilesimler();
 select tdt.yaz('Bildirim kuyruğu: gönderen adı ve alıcının oda adıyla, yalnızca bildirimi bekleyenler',
-  (select count(*) >= 2 and bool_and(gonderen_ad in ('Deniz', 'Fatma')) and bool_and(oda_ad = 'Etk Odası') and bool_and(endpoint = 'https://push.example/emre') from eb)
+  -- gece 23:00–08:00 dürtme bildirimi kuyruğa girmez; o saatlerde yalnızca tebrikler beklenir
+  (select count(*) >= (case when extract(hour from now() at time zone 'Europe/Istanbul') >= 23 or extract(hour from now() at time zone 'Europe/Istanbul') < 8 then 1 else 2 end)
+     and bool_and(gonderen_ad in ('Deniz', 'Fatma')) and bool_and(oda_ad = 'Etk Odası') and bool_and(endpoint = 'https://push.example/emre') from eb)
   and not exists (select 1 from eb where tur = 'tebrik' and gonderen_ad = 'Fatma'));
 select tdt.yaz('Gönderilen bildirim kuyruktan düşer', (select count(*) from td_bekleyen_etkilesimler()) = 0);
 set role authenticated; set request.jwt.claim.sub = :A;

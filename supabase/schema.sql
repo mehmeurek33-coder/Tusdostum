@@ -351,8 +351,9 @@ create policy tebrik_oku on public.tebrik_ozet for select to authenticated using
 create table if not exists public.sunucu_ayar (ad text primary key, deger text not null);
 alter table public.sunucu_ayar enable row level security;
 
+-- Gün 02:00'de yenilenir: gece 00:00–02:00 arası bir önceki güne sayılır (uygulamadaki todayKey ile aynı)
 create or replace function public.td_bugun() returns date
-language sql stable as $$ select (now() at time zone 'Europe/Istanbul')::date $$;
+language sql stable as $$ select ((now() at time zone 'Europe/Istanbul') - interval '2 hours')::date $$;
 
 -- Bildirim göndericiyi hemen çağırır (pg_net ve ayarlar varsa; yoksa dakikalık zamanlayıcı gönderir)
 create or replace function public.td_bildirim_tetikle() returns void
@@ -420,7 +421,7 @@ begin
   select veri -> 'timer' into t from profiller where uid = me;
   if jsonb_typeof(t) = 'object' and jsonb_typeof(t -> 'st') = 'number' then
     simdi := extract(epoch from now()) * 1000;
-    gece := extract(epoch from (g::timestamp at time zone 'Europe/Istanbul')) * 1000;
+    gece := extract(epoch from ((g::timestamp + interval '2 hours') at time zone 'Europe/Istanbul')) * 1000;   -- gün 02:00'de başlar
     bas := (t ->> 'st')::numeric;
     is_ms := case when jsonb_typeof(t -> 'workMs') = 'number' then greatest((t ->> 'workMs')::numeric, 0) else 0 end
       + case when jsonb_typeof(t -> 'runStart') = 'number' then least(greatest(simdi - (t ->> 'runStart')::numeric, 0), 3 * 3600000) else 0 end;

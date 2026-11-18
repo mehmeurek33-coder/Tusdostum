@@ -9,7 +9,7 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
   const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, serviceWorkers: 'block' }); const p = await ctx.newPage(); const hata = []; p.on('pageerror', e => hata.push(e.message));
   await p.goto(S.adres + '/'); await p.waitForSelector('#authView');
   await p.click('#authView [data-mode="kayit"]'); await p.fill('#aMail', 's@t.dev'); await p.fill('#aPass', 'gizli123'); await p.click('#aGo');
-  await p.waitForSelector('#joinForm', { timeout: 15000 }); await p.fill('#jNick', 'S'); await p.click('#joinForm button[type=submit]'); await bekle(1200);
+  await p.waitForSelector('#joinForm', { timeout: 15000 }); await p.fill('#jNick', 'Su'); await p.click('#joinForm button[type=submit]'); await bekle(1200);
   const ders = () => p.evaluate(() => document.querySelector('#tSubject').value);
   ok('Hiç kayıt yokken varsayılan ders (Anatomi)', await ders() === 'anatomi', await ders());
   const uid = S.hesaplar.get('s@t.dev').id, now = Date.now();

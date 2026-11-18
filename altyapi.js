@@ -259,7 +259,8 @@
   // ---------- Tebrik ve dürtme ----------
   const tebrikler = new Map(), etkDinleyen = [];
   const etkHaber = () => etkDinleyen.forEach(f => { try { f(); } catch {} });
-  const bugunTR = () => { try { return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Istanbul" }); } catch { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; } };
+  // Gün 02:00'de yenilenir (sunucudaki td_bugun ile aynı): 2 saat geriden Türkiye tarihi
+  const bugunTR = () => { const t = new Date(Date.now() - 2 * 3600 * 1000); try { return t.toLocaleDateString("sv-SE", { timeZone: "Europe/Istanbul" }); } catch { return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; } };
   async function cekTebrik() {
     if (!sb || !uid) return;
     const { data, error } = await sb.from("tebrik_ozet").select("uid,toplam,gun,bugun");
