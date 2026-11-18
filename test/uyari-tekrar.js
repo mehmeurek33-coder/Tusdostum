@@ -32,7 +32,7 @@ const ok = (ad, kosul, ek = '') => out.push(`${kosul ? 'GEÇTİ ' : 'KALDI '} ${
   };
   // Mola: 5 dk uyarısı, mola 7 dk önce başladı → ilk uyarı "5", sonra 10. ve 15. dakikada
   const m = await dene({ breakWarn: 5 }, now => ({ s: 'anatomi', t: 'konu', st: now - 3600e3, runStart: null, workMs: 30 * 60000, breakStart: now - 7 * 60000, breakMs: 0, bn: 1 }));
-  ok('Mola: ilk uyarı ve sonra 5 dakikada bir (5 → 10 → 15)', JSON.stringify(m.toastlar) === JSON.stringify(['Molan 5 dakikayı geçti.', 'Molan 10 dakikayı geçti.', 'Molan 15 dakikayı geçti.']), JSON.stringify(m.toastlar));
+  ok('Mola: yalnızca 2 uyarı (5 → 10), sonra susuyor', JSON.stringify(m.toastlar) === JSON.stringify(['Molan 5 dakikayı geçti.', 'Molan 10 dakikayı geçti.']), JSON.stringify(m.toastlar));
   // Çalışma: 60 dk uyarısı, son oturum 61 dk → 10 dakika boyunca yalnızca bir kez
   const c = await dene({ workWarn: 60 }, now => ({ s: 'anatomi', t: 'konu', st: now - 3600e3 * 2, runStart: now - 61 * 60000, workMs: 0, breakStart: null, breakMs: 0, bn: 0 }));
   ok('Çalışma: süre aşılınca yalnızca BİR kez uyarı (tekrar yok)', JSON.stringify(c.toastlar) === JSON.stringify(['Aralıksız çalışman 60 dakikayı geçti.']), JSON.stringify(c.toastlar));

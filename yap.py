@@ -105,8 +105,8 @@ function enablePush(after) {
 function syncAlerts() {
   const A = window.TusAltyapi; if (!A || S.mode !== "cloud" || readOnly()) return;
   const t = S.timer, now = Date.now(), out = [];
-  // mola: ilk uyarıdan sonra 5 dakikada bir (en çok 3 saat); çalışma: yalnızca bir kez
-  if (t && onBreak(t)) { const w = breakWarnMin(); if (w) out.push({ tur: "mola", zaman: t.breakStart + w * 60000, dk: w, tekrar: 36 }); }
+  // mola: süre dolunca ve 5 dakika sonra (toplam 2); çalışma: yalnızca bir kez
+  if (t && onBreak(t)) { const w = breakWarnMin(); if (w) out.push({ tur: "mola", zaman: t.breakStart + w * 60000, dk: w, tekrar: MOLA_UYARI_TEKRAR }); }
   else if (t && t.runStart) {
     const w = workWarnMin(); if (w) out.push({ tur: "calisma", zaman: t.runStart + w * 60000, dk: w, tekrar: 0 });
     out.push({ tur: "sinir", zaman: t.runStart + MAX_RUN_MS, dk: 180 });

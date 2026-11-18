@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>TusDostum</title>
-<meta name="td-surum" content="910bf2db61a6">
+<meta name="td-surum" content="5635e9965a76">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -1150,7 +1150,9 @@ function startBreakAudio() {                                       // yalnızca 
     }, () => { if (brkAudio === a) stopBreakAudio(); });
   } catch { stopBreakAudio(); }
 }
-// Süre aşılınca uyarı 5 dakikada bir tekrarlar (unutulmuş mola için en çok 3 saat)
+// Mola süresi aşılınca uyarı bir kez, 5 dakika sonra bir kez daha (toplam 2) verilir
+const MOLA_UYARI_TEKRAR = 1;
+// (eski: 5 dakikada bir, unutulmuş mola için en çok 3 saat)
 const ALERT_EVERY_MS = 5 * 60000, BREAK_ALERT_MAX_MS = 3 * 3600 * 1000;
 // ---------- Kilit ekranında sayaç (deneysel, cihaza özel) ----------
 // 12 saatlik sessiz bir ses kaydı, kronometrenin gösterdiği süreden itibaren çalınır. iPhone kilit ekranındaki
@@ -1256,7 +1258,7 @@ function breakAlert() {
   const t = S.timer, w = breakWarnMin(); if (!t || !t.breakStart || !w) return;
   const over = curBreak(t) - w * 60000; if (over < 0 || over > BREAK_ALERT_MAX_MS) return;
   const n = Math.floor(over / ALERT_EVERY_MS), key = t.breakStart + ":" + n;
-  if (S.breakWarned === key) return;
+  if (n > MOLA_UYARI_TEKRAR || S.breakWarned === key) return;        // en çok 2 kez: süre dolunca ve 5 dk sonra
   S.breakWarned = key;
   if (!(n === 0 && brkAudio && brkAudio.ok)) beep();                // ilk uyarıda zamanlanmış kayıt çalıyorsa bipi o verir
   try { if (navigator.vibrate) navigator.vibrate([250, 120, 250]); } catch {}
@@ -1292,8 +1294,8 @@ function enablePush(after) {
 function syncAlerts() {
   const A = window.TusAltyapi; if (!A || S.mode !== "cloud" || readOnly()) return;
   const t = S.timer, now = Date.now(), out = [];
-  // mola: ilk uyarıdan sonra 5 dakikada bir (en çok 3 saat); çalışma: yalnızca bir kez
-  if (t && onBreak(t)) { const w = breakWarnMin(); if (w) out.push({ tur: "mola", zaman: t.breakStart + w * 60000, dk: w, tekrar: 36 }); }
+  // mola: süre dolunca ve 5 dakika sonra (toplam 2); çalışma: yalnızca bir kez
+  if (t && onBreak(t)) { const w = breakWarnMin(); if (w) out.push({ tur: "mola", zaman: t.breakStart + w * 60000, dk: w, tekrar: MOLA_UYARI_TEKRAR }); }
   else if (t && t.runStart) {
     const w = workWarnMin(); if (w) out.push({ tur: "calisma", zaman: t.runStart + w * 60000, dk: w, tekrar: 0 });
     out.push({ tur: "sinir", zaman: t.runStart + MAX_RUN_MS, dk: 180 });

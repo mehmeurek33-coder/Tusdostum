@@ -279,7 +279,7 @@ begin
     if z < now() - interval '1 minute' or z > now() + interval '13 hours' then continue; end if;
     insert into uyarilar (uid, tur, zaman, dk, kalan, sira)
       values (me, x ->> 'tur', z, least(greatest(coalesce((x ->> 'dk')::int, 0), 0), 600),
-              case when (x ->> 'tur') in ('sinir', 'calisma') then 0 else least(greatest(coalesce((x ->> 'tekrar')::int, 0), 0), 40) end, 0)
+              case when (x ->> 'tur') in ('sinir', 'calisma') then 0 else least(greatest(coalesce((x ->> 'tekrar')::int, 0), 0), 1) end, 0)   -- mola: en çok 1 tekrar (toplam 2)
       on conflict (uid, tur) do update set zaman = excluded.zaman, dk = excluded.dk, kalan = excluded.kalan, sira = 0;
   end loop;
 end $$;
