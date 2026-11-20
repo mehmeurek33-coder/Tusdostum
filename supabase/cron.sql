@@ -28,6 +28,14 @@ select cron.schedule('tusdostum-haftalik', '0 14 * * 0', $cron$
     timeout_milliseconds := 30000);
 $cron$);
 
+-- Zamanlayıcının kendi çalışma kayıtları (her dakika bir satır) kendiliğinden silinmez; 3 günden eskisini her gece sil.
+-- Kullanıcı kayıtlarına dokunmaz; yalnızca cron.job_run_details.
+select cron.unschedule(jobid) from cron.job where jobname = 'tusdostum-cron-temizlik';
+
+select cron.schedule('tusdostum-cron-temizlik', '43 0 * * *', $cron$
+  delete from cron.job_run_details where end_time < now() - interval '3 days';
+$cron$);
+
 -- Denetim: son çalışmaları görmek için
 --   select status, return_message, start_time from cron.job_run_details order by start_time desc limit 10;
 -- Durdurmak için
